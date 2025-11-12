@@ -25,6 +25,15 @@
 #include <MotorDriver.h>
 #include <MPU6050.h>
 
+// Include configuration file
+#include "config.h"
+
+// Encoder pins structure
+struct EncoderPins {
+  int encA;
+  int encB;
+};
+
 // Create YFROBOT motor driver object for IIC RZ7889
 MotorDriver motorDriver = MotorDriver(YF_IIC_RZ);
 
@@ -32,11 +41,6 @@ MotorDriver motorDriver = MotorDriver(YF_IIC_RZ);
 MPU6050 mpu6050;
 
 // Encoder pins (direct connection from motors to Arduino)
-struct EncoderPins {
-  int encA;
-  int encB;
-};
-
 EncoderPins encoders[4] = {
   {3, 5},  // Motor 1 - Lifter (d3, d5)
   {2, 4},  // Motor 2 - Front Right (d2, d4)
@@ -49,27 +53,26 @@ volatile long encoderCount[4] = {0, 0, 0, 0};
 long lastEncoderCount[4] = {0, 0, 0, 0};
 unsigned long lastEncoderTime[4] = {0, 0, 0, 0};
 
-// Encoder smoothing and filtering
-#define RPM_FILTER_SIZE 5
+// Encoder smoothing and filtering (using config values)
 double rpmHistory[4][RPM_FILTER_SIZE] = {0};
 int rpmHistoryIndex[4] = {0};
 double filteredRPM[4] = {0, 0, 0, 0};
 double smoothedRPM[4] = {0, 0, 0, 0};
-double rpmAlpha = 0.6; // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
-double rpmAlphaFast = 0.9; // Ultra-responsive smoothing during fast rotation
+double rpmAlpha = RPM_ALPHA; // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
+double rpmAlphaFast = RPM_ALPHA_FAST; // Ultra-responsive smoothing during fast rotation
 
-// Encoder-based acceleration limiting - different limits for different movements
+// Encoder-based acceleration limiting - different limits for different movements (using config values)
 double lastRPM[4] = {0, 0, 0, 0};
-double maxRPMChange = 200.0; // Maximum RPM change per sample (for smooth acceleration)
-double maxRPMChangeRotation = 1000.0; // AGGRESSIVE changes for rotation (c/w commands)
+double maxRPMChange = MAX_RPM_CHANGE; // Maximum RPM change per sample (for smooth acceleration)
+double maxRPMChangeRotation = MAX_RPM_CHANGE_ROTATION; // AGGRESSIVE changes for rotation (c/w commands)
 
 // Position tracking
 long totalEncoderCount[4] = {0, 0, 0, 0};
 double motorPosition[4] = {0, 0, 0, 0}; // Position in revolutions
 
-// Motor synchronization features
+// Motor synchronization features (using config values)
 double syncError[4] = {0, 0, 0, 0};     // Synchronization error for each motor
-double syncKp = 0.3;                    // Synchronization PID gain (lower for stability)
+double syncKp = SYNC_KP;                 // Synchronization PID gain (lower for stability)
 double targetSyncRPM = 0;               // Target synchronized RPM for active motors
 bool synchronizationActive = false;     // Enable synchronization mode
 int activeMotorCount = 0;               // Number of motors currently active
@@ -101,7 +104,7 @@ float temperature;                     // Temperature reading (°C)
 double robotHeading = 0.0;             // Integrated heading from gyro (°)
 double targetHeading = 0.0;            // Target heading for corrections
 double headingError = 0.0;             // Heading error for PID correction
-double headingKp = 2.0;                // Heading correction PID gain
+double headingKp = CONFIG_HEADING_KP;           // Heading correction PID gain (using config)
 double headingCorrection = 0.0;        // Heading correction output
 unsigned long lastMPUUpdate = 0;       // Last MPU update timestamp
 bool imuInitialized = false;           // IMU initialization status
@@ -109,39 +112,33 @@ bool headingCorrectionEnabled = true;  // Enable heading correction
 double gyroDriftX = 0.0;               // Gyro X-axis drift compensation
 double gyroDriftY = 0.0;               // Gyro Y-axis drift compensation
 double gyroDriftZ = 0.0;               // Gyro Z-axis drift compensation
-int gyroCalibrationSamples = 100;      // Number of samples for gyro calibration (reduced for faster boot)
+int gyroCalibrationSamples = GYRO_CALIBRATION_SAMPLES; // Number of samples for gyro calibration
 bool gyroCalibrated = false;           // Gyro calibration status
 
-// PID controllers - AGGRESSIVE tuning for maximum responsiveness
+// PID controllers - using config values for tuning
 PID pid[4] = {
-  PID(&input[0], &output[0], &setpoint[0], 2.0, 0.5, 0.1, DIRECT),  // Lifter: conservative
+  PID(&input[0], &output[0], &setpoint[0], CONFIG_PID_KP, CONFIG_PID_KI, CONFIG_PID_KD, DIRECT),  // Lifter: conservative
   PID(&input[1], &output[1], &setpoint[1], 8.0, 3.0, 0.2, DIRECT),  // Omni: AGGRESSIVE for instant response
   PID(&input[2], &output[2], &setpoint[2], 8.0, 3.0, 0.2, DIRECT),  // Lower Kd to prevent oscillations
   PID(&input[3], &output[3], &setpoint[3], 8.0, 3.0, 0.2, DIRECT)
 };
 
-// Movement speed settings
-const double MAX_RPM = 100.0;        // Maximum RPM for motors
-const double BASE_SPEED = 60.0;      // Base speed for movements
-const double TURN_SPEED = 40.0;      // Speed for turning movements
-const double LIFT_SPEED = 50.0;      // Speed for lifter motor
+// Movement speed settings (using config values)
+const double MAX_RPM = CONFIG_MAX_RPM;        // Maximum RPM for motors
+const double BASE_SPEED = CONFIG_BASE_SPEED;      // Base speed for movements
+const double TURN_SPEED = CONFIG_TURN_SPEED;      // Speed for turning movements
+const double LIFT_SPEED = CONFIG_LIFT_SPEED;      // Speed for lifter motor
 
-// Encoder constants (adjust based on your motor specifications)
-const int ENCODER_CPR = 28;          // Counts per revolution (for PG28)
-const double GEAR_RATIO = 1.0;       // Gear ratio (adjust if geared)
-const double PID_SAMPLE_TIME = 100;  // PID sample time in ms
+// Encoder constants (using config values)
+const int ENCODER_CPR = CONFIG_ENCODER_CPR;          // Counts per revolution (for PG28)
+const double GEAR_RATIO = CONFIG_GEAR_RATIO;       // Gear ratio (adjust if geared)
+const double PID_SAMPLE_TIME = CONFIG_PID_SAMPLE_TIME;  // PID sample time in ms
 
-
-// Omni wheel configuration constants for hexagonal 3-wheel robot
-// Adjust these angles based on your actual wheel mounting positions
-// Angles in degrees from forward direction (counter-clockwise)
-// Hexagonal robot with 135° wheel spacing: FR=45°, FL=135°, Back=180°
-// FL changed to 135° to ensure FL and FR counter-rotate for forward movement
-// You may need to fine-tune these based on your robot's wheel positions
-const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
+// Omni wheel configuration constants (using config values)
+const double MOTOR_ANGLES[4] = {MOTOR_ANGLES_ARRAY_VALUES};  // Lifter, FR, FL, Back
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD_RATE);
   Serial.println("Omni Wheel Robot Control Starting...");
 
   // Initialize YFROBOT motor driver
@@ -172,8 +169,8 @@ void setup() {
   // Initialize PID controllers
   for (int i = 0; i < 4; i++) {
     pid[i].SetMode(AUTOMATIC);
-    pid[i].SetSampleTime(PID_SAMPLE_TIME);
-    pid[i].SetOutputLimits(-255, 255);  // PWM range
+    pid[i].SetSampleTime(CONFIG_PID_SAMPLE_TIME);
+    pid[i].SetOutputLimits(CONFIG_PID_OUTPUT_MIN, CONFIG_PID_OUTPUT_MAX);  // PWM range
   }
 
   Serial.println("Setup complete. Ready for commands.");
@@ -193,7 +190,7 @@ void setup() {
 void loop() {
   // Update motor control every PID sample time
   static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate >= PID_SAMPLE_TIME) {
+  if (millis() - lastUpdate >= CONFIG_PID_SAMPLE_TIME) {
     updateMotorControl();
     lastUpdate = millis();
   }
@@ -280,11 +277,11 @@ double applyExponentialSmoothing(int motorIndex, double newRPM) {
 }
 
 double applyAccelerationLimiting(int motorIndex, double targetRPM) {
-  // Check if we're in fast rotation mode (recent rotation command) - EXTENDED to 5 seconds
+  // Check if we're in fast rotation mode (recent rotation command) - using config values
   bool isFastRotation = false;
-  if (fastRotationMode && (millis() - lastRotationCommand) < 5000) {  // 5 seconds of MAXIMUM fast response
+  if (fastRotationMode && (millis() - lastRotationCommand) < FAST_ROTATION_DURATION) {  // Config duration of fast response
     isFastRotation = true;
-  } else if ((millis() - lastRotationCommand) > 6000) {  // Disable fast mode after 6 seconds
+  } else if ((millis() - lastRotationCommand) > FAST_ROTATION_TIMEOUT) {  // Disable fast mode after config timeout
     fastRotationMode = false;
   }
 
@@ -414,7 +411,7 @@ void updateMotorControl() {
     pid[0].Compute();
 
     // Apply lifter motor control
-    int lifterSpeed = map(output[0], -255, 255, -4096, 4096);
+    int lifterSpeed = map(output[0], CONFIG_PID_OUTPUT_MIN, CONFIG_PID_OUTPUT_MAX, -4096, 4096);
     motorDriver.setSingleMotor(1, lifterSpeed); // Motor 1 (lifter)
   } else {
     // Stop lifter when not active
@@ -437,7 +434,7 @@ void updateMotorControl() {
 
       // Apply motor control using YFROBOT library
       // Scale PID output (-255 to 255) to YFROBOT range (-4096 to 4096)
-      int motorSpeed = map(output[i], -255, 255, -4096, 4096);
+      int motorSpeed = map(output[i], CONFIG_PID_OUTPUT_MIN, CONFIG_PID_OUTPUT_MAX, -4096, 4096);
       motorDriver.setSingleMotor(i+1, motorSpeed); // i+1 because YFROBOT uses 1-4 indexing
     }
   } else {
@@ -561,8 +558,8 @@ void setOmniSpeeds(double vx, double vy, double omega) {
 // Left:          M2=0,       M3=-0.8,   M4=+0.8  (FL + Back)
 // Right:         M2=+0.8,    M3=0,      M4=-0.8  (FR + Back)
 // Forward-Left:  M2=+0.8,    M3=0,      M4=+0.8  (FR + Back)
-// Forward-Right: M2=0,       M3=+0.8,   M4=+0.8  (FL + Back)
-// Backward-Left: M2=0,       M3=-0.8,   M4=-0.8  (FL + Back)
+// Forward-Right: M3=+0.8,    M3=0,      M4=+0.8  (FL + Back)
+// Backward-Left: M3=-0.8,    M3=0,      M4=-0.8  (FL + Back)
 // Backward-Right:M2=-0.8,    M3=0,      M4=-0.8  (FR + Back)
 // RotateCW:      M2=+1.0,    M3=+1.0,   M4=+1.0  (All wheels)
 
@@ -839,6 +836,132 @@ void liftDown() {
   // Other motors will be stopped by the control logic
 }
 
+// Speed control
+void setSpeed(float multiplier) {
+  speedMultiplier = constrain(multiplier, 0.1, 1.0);
+}
+
+// Special movement patterns
+void calibrateMotors() {
+  Serial.println("Starting motor calibration...");
+
+  // Test each motor individually
+  for (int i = 1; i <= 4; i++) {
+    Serial.print("Calibrating Motor ");
+    Serial.println(i);
+    testMotor(i);
+    delay(1000);
+  }
+
+  // Test basic movements
+  Serial.println("Testing forward movement...");
+  moveForward();
+  delay(2000);
+  stopMotors();
+
+  Serial.println("Testing rotation...");
+  rotateCW();
+  delay(3000);
+  stopMotors();
+
+  Serial.println("Calibration complete!");
+}
+
+// Encoder calibration function
+void calibrateEncoders() {
+  Serial.println("Calibrating encoders and resetting position tracking...");
+
+  // Reset all encoder tracking data
+  for (int i = 0; i < 4; i++) {
+    encoderCount[i] = 0;
+    lastEncoderCount[i] = 0;
+    totalEncoderCount[i] = 0;
+    motorPosition[i] = 0;
+    smoothedRPM[i] = 0;
+    filteredRPM[i] = 0;
+    lastRPM[i] = 0;
+    syncError[i] = 0;
+
+    // Reset history buffers
+    for (int j = 0; j < RPM_FILTER_SIZE; j++) {
+      rpmHistory[i][j] = 0;
+    }
+    rpmHistoryIndex[i] = 0;
+  }
+
+  // Reset synchronization data
+  targetSyncRPM = 0;
+  synchronizationActive = false;
+  activeMotorCount = 0;
+
+  Serial.println("Encoder calibration complete - all positions and sync data reset to zero");
+}
+
+// Figure-8 pattern for testing
+void figureEight() {
+  Serial.println("Starting Figure-8 pattern with smooth encoder-controlled movements...");
+
+  // First loop - right turn with smooth transitions
+  Serial.println("Right loop...");
+  setOmniSpeeds(0.6, 0.0, 0.8);  // Forward + right turn
+  delay(3000);
+
+  // Smooth transition
+  stopMotors();
+  delay(1000);  // Longer pause for encoder stabilization
+
+  // Second loop - left turn
+  Serial.println("Left loop...");
+  setOmniSpeeds(0.6, 0.0, -0.8); // Forward + left turn
+  delay(3000);
+
+  stopMotors();
+  Serial.println("Figure-8 complete - encoder data stabilized!");
+}
+
+// Test individual motor at FULL POWER
+void testMotor(int motorIndex) {
+  Serial.print("FULL POWER Test - Motor ");
+  Serial.print(motorIndex);
+  switch(motorIndex) {
+    case 1: Serial.println(" (Lifter)"); break;
+    case 2: Serial.println(" (Front Right)"); break;
+    case 3: Serial.println(" (Front Left)"); break;
+    case 4: Serial.println(" (Back)"); break;
+  }
+  Serial.println("Power level: 4000/4096 (97% max) - 3 seconds each direction");
+
+  bool wasStopped = motorsStopped;    // Remember previous omni state
+  bool wasLifterActive = lifterActive; // Remember previous lifter state
+
+  // Temporarily disable all automatic control for testing
+  motorsStopped = true;
+  lifterActive = false;
+
+  // Test forward - FULL POWER
+  Serial.println("Forward (FULL POWER)...");
+  motorDriver.setSingleMotor(motorIndex, 4000);  // Near maximum speed
+  delay(3000);
+
+  // Stop
+  motorDriver.stopMotor(motorIndex);
+  delay(1000);
+
+  // Test backward - FULL POWER
+  Serial.println("Backward (FULL POWER)...");
+  motorDriver.setSingleMotor(motorIndex, -4000); // Near maximum speed reverse
+  delay(3000);
+
+  // Stop
+  motorDriver.stopMotor(motorIndex);
+
+  // Restore previous states
+  motorsStopped = wasStopped;
+  lifterActive = wasLifterActive;
+
+  Serial.println("Test complete");
+}
+
 // Execute commands from serial
 void executeCommand(char command) {
   switch (command) {
@@ -941,7 +1064,6 @@ void executeCommand(char command) {
         Serial.println("TURBO MODE DISABLED - Normal response");
       } else {
         fastRotationMode = true;
-        lastRotationCommand = millis(); // Prevent auto-disable
         Serial.println("TURBO MODE ENABLED - Maximum responsiveness for ALL movements");
       }
       break;
@@ -1034,7 +1156,6 @@ void executeCommand(char command) {
       // Reset all setpoints and flags
       for (int i = 0; i < 4; i++) {
         setpoint[i] = 0;
-        prev_setpoint[i] = 0;
         motorIntendedActive[i] = false;
       }
       break;
@@ -1119,7 +1240,7 @@ void calibrateGyroscope() {
     if (i % 25 == 0) {  // Progress every 25 samples (every 0.25 seconds)
       Serial.print(".");
     }
-    delay(5);  // Reduced delay for faster calibration
+    delay(GYRO_CALIBRATION_DELAY);  // Using config delay for calibration
   }
 
   gyroDriftX = sumX / gyroCalibrationSamples;
@@ -1300,129 +1421,4 @@ void printStatus() {
     Serial.println(output[i], 1);
   }
   Serial.println("==================");
-}
-
-void setSpeed(float multiplier) {
-  speedMultiplier = constrain(multiplier, 0.1, 1.0);
-}
-
-// Calibration sequence
-void calibrateMotors() {
-  Serial.println("Starting motor calibration...");
-
-  // Test each motor individually
-  for (int i = 1; i <= 4; i++) {
-    Serial.print("Calibrating Motor ");
-    Serial.println(i);
-    testMotor(i);
-    delay(1000);
-  }
-
-  // Test basic movements
-  Serial.println("Testing forward movement...");
-  moveForward();
-  delay(2000);
-  stopMotors();
-
-  Serial.println("Testing rotation...");
-  rotateCW();
-  delay(3000);
-  stopMotors();
-
-  Serial.println("Calibration complete!");
-}
-
-// Encoder calibration function
-void calibrateEncoders() {
-  Serial.println("Calibrating encoders and resetting position tracking...");
-
-  // Reset all encoder tracking data
-  for (int i = 0; i < 4; i++) {
-    encoderCount[i] = 0;
-    lastEncoderCount[i] = 0;
-    totalEncoderCount[i] = 0;
-    motorPosition[i] = 0;
-    smoothedRPM[i] = 0;
-    filteredRPM[i] = 0;
-    lastRPM[i] = 0;
-    syncError[i] = 0;
-
-    // Reset history buffers
-    for (int j = 0; j < RPM_FILTER_SIZE; j++) {
-      rpmHistory[i][j] = 0;
-    }
-    rpmHistoryIndex[i] = 0;
-  }
-
-  // Reset synchronization data
-  targetSyncRPM = 0;
-  synchronizationActive = false;
-  activeMotorCount = 0;
-
-  Serial.println("Encoder calibration complete - all positions and sync data reset to zero");
-}
-
-// Figure-8 pattern for testing
-void figureEight() {
-  Serial.println("Starting Figure-8 pattern with smooth encoder-controlled movements...");
-
-  // First loop - right turn with smooth transitions
-  Serial.println("Right loop...");
-  setOmniSpeeds(0.6, 0.0, 0.8);  // Forward + right turn
-  delay(3000);
-
-  // Smooth transition
-  stopMotors();
-  delay(1000);  // Longer pause for encoder stabilization
-
-  // Second loop - left turn
-  Serial.println("Left loop...");
-  setOmniSpeeds(0.6, 0.0, -0.8); // Forward + left turn
-  delay(3000);
-
-  stopMotors();
-  Serial.println("Figure-8 complete - encoder data stabilized!");
-}
-
-// Test individual motor at FULL POWER
-void testMotor(int motorIndex) {
-  Serial.print("FULL POWER Test - Motor ");
-  Serial.print(motorIndex);
-  switch(motorIndex) {
-    case 1: Serial.println(" (Lifter)"); break;
-    case 2: Serial.println(" (Front Right)"); break;
-    case 3: Serial.println(" (Front Left)"); break;
-    case 4: Serial.println(" (Back)"); break;
-  }
-  Serial.println("Power level: 4000/4096 (97% max) - 3 seconds each direction");
-
-  bool wasStopped = motorsStopped;    // Remember previous omni state
-  bool wasLifterActive = lifterActive; // Remember previous lifter state
-
-  // Temporarily disable all automatic control for testing
-  motorsStopped = true;
-  lifterActive = false;
-
-  // Test forward - FULL POWER
-  Serial.println("Forward (FULL POWER)...");
-  motorDriver.setSingleMotor(motorIndex, 4000);  // Near maximum speed
-  delay(3000);
-
-  // Stop
-  motorDriver.stopMotor(motorIndex);
-  delay(1000);
-
-  // Test backward - FULL POWER
-  Serial.println("Backward (FULL POWER)...");
-  motorDriver.setSingleMotor(motorIndex, -4000); // Near maximum speed reverse
-  delay(3000);
-
-  // Stop
-  motorDriver.stopMotor(motorIndex);
-
-  // Restore previous states
-  motorsStopped = wasStopped;
-  lifterActive = wasLifterActive;
-
-  Serial.println("Test complete");
 }
