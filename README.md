@@ -11,18 +11,21 @@ Arduino Mega code for controlling a **hexagonal-shaped 3-wheel omni robot** usin
 **Connections Required:**
 
 **I2C Communication (Shield ↔ Arduino Mega):**
+
 - **SDA**: Arduino SDA (Pin 20)
 - **SCL**: Arduino SCL (Pin 21)
 - **GND**: Connect to Arduino GND
 - **5V/VCC**: Connect to Arduino 5V
 
 **Encoder Connections (Motor → Arduino Direct):**
+
 - **Motor 1 (Lifter)**: Data A (d3) → Arduino D3, Data B (d5) → Arduino D5
 - **Motor 2 (Front Right)**: Data A (d2) → Arduino D2, Data B (d4) → Arduino D4
 - **Motor 3 (Front Left)**: Data A (d7) → Arduino D7, Data B (d6) → Arduino D6
 - **Motor 4 (Back)**: Data A (d9) → Arduino D9, Data B (d8) → Arduino D8
 
 **Power Connections:**
+
 - **Motor Power**: Connect to YFROBOT v2 shield motor terminals (M+, M-)
 - **Motor Signal**: Connect motor encoder pins (d#) to Arduino pins as above
 - **Main Power**: Shield gets power from Arduino 5V/GND via I2C
@@ -30,6 +33,7 @@ Arduino Mega code for controlling a **hexagonal-shaped 3-wheel omni robot** usin
 **Note**: No PWM or DIR pins need to be connected - the shield handles motor control internally via I2C!
 
 ### Important Notes
+
 - The shield uses I2C communication - ensure SDA/SCL connections are secure
 - Encoder feedback provides closed-loop PID control for precise movement
 - If motor directions are reversed, adjust the `motorConfig()` call in setup()
@@ -38,6 +42,7 @@ Arduino Mega code for controlling a **hexagonal-shaped 3-wheel omni robot** usin
 ## Features
 
 ### PID Control
+
 - Each motor has independent PID control for precise speed regulation
 - Encoder feedback for closed-loop control
 - Adjustable PID parameters (Kp, Ki, Kd)
@@ -51,6 +56,7 @@ Arduino Mega code for controlling a **hexagonal-shaped 3-wheel omni robot** usin
 The system now includes **MPU6050 IMU sensor integration** for enhanced movement precision and stability:
 
 #### IMU Hardware Setup
+
 - **I2C Connection**: MPU6050 SDA/SCL connected to Arduino Mega SDA(20)/SCL(21)
 - **Power**: MPU6050 powered from Arduino 3.3V and GND (NOT 5V!)
 - **I2C Address**: Default 0x68 (may conflict with motor driver)
@@ -60,6 +66,7 @@ The system now includes **MPU6050 IMU sensor integration** for enhanced movement
 - **Real-time Updates**: IMU data processed at 100Hz with the motor control loop
 
 #### IMU Features
+
 - **Heading Tracking**: Gyroscope integration provides accurate robot heading (yaw)
 - **Drift Compensation**: Automatic gyroscope calibration removes drift
 - **Heading Correction**: PID-based heading correction maintains straight line movement
@@ -68,6 +75,7 @@ The system now includes **MPU6050 IMU sensor integration** for enhanced movement
 - **Enhanced Stability**: IMU corrections applied to motor setpoints for precise control
 
 #### IMU Commands (Two-Character)
+
 - **`ir`**: IMU Status - Shows heading, target, error, correction, gyro/accel data, temperature
 - **`ic`**: IMU Calibration - Recalibrates gyroscope (keep robot stationary)
 - **`im`**: Toggle IMU Correction - Enable/disable heading correction
@@ -75,6 +83,7 @@ The system now includes **MPU6050 IMU sensor integration** for enhanced movement
 - **`v`/`V`**: Emergency Stop - Force stops all motors and resets all states
 
 #### IMU Integration Details
+
 - **Target Heading Setting**: Automatically set when starting linear movements (f,b,l,r,q,e,z,x)
 - **Correction Algorithm**: Proportional correction applied only to intended active motors during movement
 - **Motor State Awareness**: IMU corrections respect motor intended active flags for precise control
@@ -83,7 +92,9 @@ The system now includes **MPU6050 IMU sensor integration** for enhanced movement
 - **Error Handling**: IMU failure doesn't stop robot operation (graceful degradation)
 
 #### IMU Troubleshooting
+
 If IMU connection fails during boot:
+
 1. **Check Power**: MPU6050 must use 3.3V, NOT 5V (will damage sensor)
 2. **Verify Connections**: SDA→Pin20, SCL→Pin21, VCC→3.3V, GND→GND
 3. **I2C Conflicts**: Motor driver may interfere with I2C bus
@@ -95,42 +106,57 @@ If IMU connection fails during boot:
 
 ### Sensor Hardware Setup
 
+**Important**: The YFROBOT v2 Motor Driver Shield does NOT have built-in sensor interfaces. All sensors must be connected directly to Arduino pins.
+
 **6x IR Distance Sensors (Sharp GP2Y0A02YK0F)** - Wall Alignment
+
 - **Range**: 20-150cm (200-1500mm)
-- **Output**: Analog voltage 0.4V-2.7V
+- **Output**: Analog voltage 0.4V-2.7V (linear relationship with distance)
 - **Pins**: A0-A5 (Left1, Left2, Right1, Right2, Back1, Back2)
 - **Purpose**: Wall alignment and obstacle detection on left/right/back sides
+- **Connection**: Connect sensor output pins directly to Arduino analog pins A0-A5
+- **Power**: Connect sensor VCC to Arduino 5V, GND to Arduino GND
 
 **2x HC-SR04 Ultrasonic Sensors** - Front Distance
+
 - **Range**: 2-400cm
 - **Pins**: Trig(22,24), Echo(23,25) for Front Left/Right
 - **Purpose**: Front obstacle detection and precise front distance measurement
+- **Connection**: Connect directly to Arduino digital pins as specified
+- **Power**: Connect sensor VCC to Arduino 5V, GND to Arduino GND
 
 **3x Line Sensors** - Line Following/Navigation
+
 - **Pins**: A6-A8 (Left, Center, Right)
 - **Purpose**: Line following, alignment with floor lines, navigation assistance
+- **Connection**: Connect sensor output pins directly to Arduino analog pins A6-A8
+- **Power**: Connect sensor VCC to Arduino 5V, GND to Arduino GND
 
 ### Sensor Features
 
 #### IR Distance Sensor Processing
+
 - **Voltage-to-Distance Conversion**: Automatic conversion using Sharp GP2Y0A02YK0F formula
 - **Validity Checking**: Only valid readings (within 200-1500mm range) are used
 - **Real-time Updates**: Sensors updated every 100ms in main loop
 - **Wall Alignment**: 2 sensors per side provide redundancy and better alignment
 
 #### Ultrasonic Sensor Processing
+
 - **Pulse Timing**: Standard HC-SR04 pulse timing with 30ms timeout
 - **Distance Calculation**: Automatic conversion using speed of sound (343 m/s)
 - **Timeout Handling**: Invalid readings flagged when no echo received
 - **Front Detection**: Left/right front sensors for obstacle avoidance
 
 #### Line Sensor Processing
+
 - **Threshold Detection**: Configurable threshold (default 512) for line detection
 - **Raw Value Reading**: Analog readings provide sensitivity information
 - **Three-Sensor Array**: Left/Center/Right for precise line following
 - **Navigation Aid**: Can be used for both line following and general navigation
 
 #### Sensor Integration Features
+
 - **Automatic Updates**: All sensors updated periodically in main loop
 - **Data Structures**: Organized sensor data with validity flags
 - **Status Display**: Sensor readings shown in `p` (status) command
@@ -140,6 +166,7 @@ If IMU connection fails during boot:
 ### Sensor Commands
 
 #### Detailed Sensor Readings (`sr` command)
+
 ```
 === Detailed Sensor Readings ===
 IR Distance Sensors (Sharp GP2Y0A02YK0F):
@@ -162,16 +189,19 @@ Line Sensors (Threshold: 512):
 ### Sensor Applications
 
 #### Wall Alignment
+
 - **Left/Right IR Sensors**: Maintain consistent distance from walls
 - **Redundant Sensors**: 2 sensors per side provide reliable alignment
 - **Range**: 20-150cm optimal for wall following in corridors
 
 #### Obstacle Avoidance
+
 - **Front Ultrasonic**: Detect obstacles before collision
 - **Wide Coverage**: Left/right front sensors cover approach angles
 - **Long Range**: Up to 4m detection range for navigation planning
 
 #### Line Following/Navigation
+
 - **Three-Sensor Array**: Precise line detection and centering
 - **Floor Navigation**: Follow lines or navigate to marked positions
 - **Dual Purpose**: Can be used for line following or general navigation
@@ -179,16 +209,19 @@ Line Sensors (Threshold: 512):
 ### Sensor Troubleshooting
 
 #### IR Sensor Issues
+
 - **Invalid Readings**: Check voltage range (0.4-2.7V expected)
 - **Noisy Readings**: Add filtering or averaging if needed
 - **Range Limits**: Sensors may give invalid readings outside 20-150cm
 
 #### Ultrasonic Sensor Issues
+
 - **No Echo**: Check power, connections, and obstacle angles
 - **Timeout Errors**: May occur with absorbent surfaces or extreme angles
 - **Interference**: Multiple ultrasonics may interfere - use timing offsets
 
 #### Line Sensor Issues
+
 - **Threshold Tuning**: Adjust threshold (default 512) for your surface
 - **Lighting**: Consistent lighting important for reliable detection
 - **Surface Contrast**: Ensure good contrast between line and floor
@@ -196,6 +229,7 @@ Line Sensors (Threshold: 512):
 ### Complete Command Set for Raspberry Pi Integration
 
 #### Basic Movements (Cardinal Directions - 2 Wheels Each)
+
 - **`f`/`F`**: Forward (FL & FR wheels only)
 - **`b`/`B`**: Backward (FL & FR wheels only)
 - **`l`/`L`**: Strafe Left (FL & Back wheels only)
@@ -203,51 +237,53 @@ Line Sensors (Threshold: 512):
 
 #### Motor Usage & Power Matrix
 
-| Command | Movement Type | Motors Used | Power Level | Notes |
-|---------|---------------|-------------|-------------|-------|
-| **`f`/`F`** | Pure Forward | M2(FR) + M3(FL) | 50%-100% × speedMultiplier | 2-wheel cardinal |
-| **`b`/`B`** | Pure Backward | M2(FR) + M3(FL) | 50%-100% × speedMultiplier | 2-wheel cardinal |
-| **`l`/`L`** | Strafe Left | M3(FL) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel cardinal |
-| **`r`/`R`** | Strafe Right | M2(FR) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel cardinal |
-| **`q`/`Q`** | Forward-Left | M2(FR) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel diagonal |
-| **`e`/`E`** | Forward-Right | M3(FL) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel diagonal |
-| **`z`/`Z`** | Backward-Left | M3(FL) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel diagonal |
-| **`x`/`X`** | Backward-Right | M2(FR) + M4(Back) | 50%-100% × speedMultiplier | 2-wheel diagonal |
-| **`t`/`T`** | Turn Left | M2(FR) + M3(FL) ± M4(Back) | 35%-80% × speedMultiplier | Forward + left turn |
-| **`y`/`Y`** | Turn Right | M2(FR) + M3(FL) ± M4(Back) | 35%-80% × speedMultiplier | Forward + right turn |
-| **`a`/`A`** | Arc Left | M2(FR) + M3(FL) ± M4(Back) | 40%-80% × speedMultiplier | Forward + left curve |
-| **`j`/`J`** | Arc Right | M2(FR) + M3(FL) ± M4(Back) | 40%-80% × speedMultiplier | Forward + right curve |
-| **`c`/`C`** | Rotate CW | M2(FR) + M3(FL) + M4(Back) | 50%-100% × speedMultiplier | All wheels spin |
-| **`w`/`W`** | Rotate CCW | M2(FR) + M3(FL) + M4(Back) | 50%-100% × speedMultiplier | All wheels spin |
-| **`u`/`U`** | Lift Up | M1(Lifter) only | 100% | Independent of omni motors |
-| **`d`/`D`** | Lift Down | M1(Lifter) only | 100% | Independent of omni motors |
-| **`1-4`** | Motor Test | Single motor | 97% max (4000/4096) | Direct control, no PID |
-| **`g`/`G`** | Encoder Calibration | Reset all encoder data | None | Zero positions & smoothing |
-| **`h`/`H`** | Figure-8 | M2(FR) + M3(FL) ± M4(Back) | 30%-80% × speedMultiplier | Smooth encoder-controlled |
-| **`o`/`O`** | Turbo Mode Toggle | Enable/disable permanent fast response | None | Maximum responsiveness for all movements |
+| Command               | Movement Type       | Motors Used                            | Power Level                 | Notes                                    |
+| --------------------- | ------------------- | -------------------------------------- | --------------------------- | ---------------------------------------- |
+| **`f`/`F`** | Pure Forward        | M2(FR) + M3(FL)                        | 50%-100% × speedMultiplier | 2-wheel cardinal                         |
+| **`b`/`B`** | Pure Backward       | M2(FR) + M3(FL)                        | 50%-100% × speedMultiplier | 2-wheel cardinal                         |
+| **`l`/`L`** | Strafe Left         | M3(FL) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel cardinal                         |
+| **`r`/`R`** | Strafe Right        | M2(FR) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel cardinal                         |
+| **`q`/`Q`** | Forward-Left        | M2(FR) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel diagonal                         |
+| **`e`/`E`** | Forward-Right       | M3(FL) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel diagonal                         |
+| **`z`/`Z`** | Backward-Left       | M3(FL) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel diagonal                         |
+| **`x`/`X`** | Backward-Right      | M2(FR) + M4(Back)                      | 50%-100% × speedMultiplier | 2-wheel diagonal                         |
+| **`t`/`T`** | Turn Left           | M2(FR) + M3(FL) ± M4(Back)            | 35%-80% × speedMultiplier  | Forward + left turn                      |
+| **`y`/`Y`** | Turn Right          | M2(FR) + M3(FL) ± M4(Back)            | 35%-80% × speedMultiplier  | Forward + right turn                     |
+| **`a`/`A`** | Arc Left            | M2(FR) + M3(FL) ± M4(Back)            | 40%-80% × speedMultiplier  | Forward + left curve                     |
+| **`j`/`J`** | Arc Right           | M2(FR) + M3(FL) ± M4(Back)            | 40%-80% × speedMultiplier  | Forward + right curve                    |
+| **`c`/`C`** | Rotate CW           | M2(FR) + M3(FL) + M4(Back)             | 50%-100% × speedMultiplier | All wheels spin                          |
+| **`w`/`W`** | Rotate CCW          | M2(FR) + M3(FL) + M4(Back)             | 50%-100% × speedMultiplier | All wheels spin                          |
+| **`u`/`U`** | Lift Up             | M1(Lifter) only                        | 100%                        | Independent of omni motors               |
+| **`d`/`D`** | Lift Down           | M1(Lifter) only                        | 100%                        | Independent of omni motors               |
+| **`1-4`**     | Motor Test          | Single motor                           | 97% max (4000/4096)         | Direct control, no PID                   |
+| **`g`/`G`** | Encoder Calibration | Reset all encoder data                 | None                        | Zero positions & smoothing               |
+| **`h`/`H`** | Figure-8            | M2(FR) + M3(FL) ± M4(Back)            | 30%-80% × speedMultiplier  | Smooth encoder-controlled                |
+| **`o`/`O`** | Turbo Mode Toggle   | Enable/disable permanent fast response | None                        | Maximum responsiveness for all movements |
 
 ### Motor Speed Calculations
 
 **Inverse Kinematics Formula (CORRECTED for physical motor mounting):**
+
 ```
 motor_speed = (-vx) × cos(θ) × speedMultiplier + vy × sin(θ) × speedMultiplier + ω × R × speedMultiplier
 ```
 
 **Motor Angles (hexagonal robot):**
+
 - **M2 (FR)**: θ = 45° (0.785 rad)
 - **M3 (FL)**: θ = 135° (2.356 rad)
 - **M4 (Back)**: θ = 180° (3.14 rad)
 
 **Example Calculations (speedMultiplier = 1.0) - CORRECTED FOR PHYSICAL MOTOR MOUNTING:**
 
-| Command | vx | vy | ω | M2 Speed | M3 Speed | M4 Speed | Back Used? |
-|---------|----|----|---|----------|----------|----------|-----------|
-| **`f`** | 1.0 | 0.0 | 0.0 | -0.707 | +0.707 | 0 | No |
-| **`b`** | -1.0 | 0.0 | 0.0 | +0.707 | -0.707 | 0 | No |
-| **`l`** | 0.0 | -1.0 | 0.0 | +0.707 | -0.707 | +1.0 | Yes |
-| **`r`** | 0.0 | 1.0 | 0.0 | -0.707 | +0.707 | -1.0 | Yes |
-| **`c`** | 0.0 | 0.0 | 1.0 | +1.0 | +1.0 | +1.0 | Yes |
-| **`w`** | 0.0 | 0.0 | -1.0 | -1.0 | -1.0 | -1.0 | Yes |
+| Command         | vx   | vy   | ω   | M2 Speed | M3 Speed | M4 Speed | Back Used? |
+| --------------- | ---- | ---- | ---- | -------- | -------- | -------- | ---------- |
+| **`f`** | 1.0  | 0.0  | 0.0  | -0.707   | +0.707   | 0        | No         |
+| **`b`** | -1.0 | 0.0  | 0.0  | +0.707   | -0.707   | 0        | No         |
+| **`l`** | 0.0  | -1.0 | 0.0  | +0.707   | -0.707   | +1.0     | Yes        |
+| **`r`** | 0.0  | 1.0  | 0.0  | -0.707   | +0.707   | -1.0     | Yes        |
+| **`c`** | 0.0  | 0.0  | 1.0  | +1.0     | +1.0     | +1.0     | Yes        |
+| **`w`** | 0.0  | 0.0  | -1.0 | -1.0     | -1.0     | -1.0     | Yes        |
 
 **Note:** Motor mounting direction required vx negation in inverse kinematics formula
 
@@ -265,6 +301,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 - **Real-time Status**: Enhanced `p` command shows smoothed RPM, sync errors, and position data
 
 **Fast Rotation Features:**
+
 - **TURBO MODE**: Permanent fast response toggle with `o` command
 - **Extended Fast Response**: 5 seconds of unlimited acceleration for rotation commands
 - **Aggressive PID Gains**: Kp=8.0, Ki=3.0, Kd=0.2 for omni motors (4x more responsive)
@@ -273,6 +310,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 - **Higher Acceleration Limits**: 1000 RPM/s for rotation vs 200 RPM/s normal
 
 **Synchronization Features:**
+
 - **Intended Active Motor Tracking**: Explicit flags track which motors are intended to move
 - **Strict 2/3-Wheel Enforcement**: Only intended motors participate in synchronization
 - **Rotation-to-Translation Fix**: Prevents motors from staying active after 3-wheel rotation commands
@@ -281,6 +319,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 - **Error Monitoring**: Displays synchronization errors and active motors in status output
 
 **Benefits:**
+
 - ✅ **Smoother Motor Response**: Filtered encoder feedback reduces oscillations
 - ✅ **Uniform Speed Control**: Motors maintain consistent RPM through PID synchronization
 - ✅ **Fast Rotation Response**: Immediate acceleration for spin commands
@@ -292,6 +331,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 ### Speed Control System
 
 **Global Speed Multiplier:** `speedMultiplier` (default: 1.0 = 100%)
+
 - **`5`**: 0.5× speed (50%)
 - **`6`**: 0.6× speed (60%)
 - **`7`**: 0.7× speed (70%)
@@ -300,37 +340,44 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 - **`0`**: 1.0× speed (100%)
 
 **Formula:** `final_speed = base_speed × speedMultiplier`
+
 - Example: Forward at 70% speed = `f` command + `7` command
 
 ### Back Wheel Activation Rules
 
 **STRICT RULES:** Back wheel (M4) is **idle** unless:
+
 - `|vy| > 0.1` (significant sideways movement >10%)
 - `|ω| > 0.1` (significant rotation >10%)
 
 **Examples:**
+
 - **`f` (1.0, 0.0, 0.0)**: `|vy|=0, |ω|=0` → Back wheel idle ✅
 - **`l` (0.0, -1.0, 0.0)**: `|vy|=1.0, |ω|=0` → Back wheel active ✅
 - **`c` (0.0, 0.0, 1.0)**: `|vy|=0, |ω|=1.0` → Back wheel active ✅
 - **`t` (0.5, 0.0, -0.8)**: `|vy|=0, |ω|=0.8` → Back wheel active ✅
 
 #### Diagonal Movements (2-wheel combinations)
+
 - **`q`/`Q`**: Forward-Left (FR + Back wheels)
 - **`e`/`E`**: Forward-Right (FL + Back wheels)
 - **`z`/`Z`**: Backward-Left (FL + Back wheels)
 - **`x`/`X`**: Backward-Right (FR + Back wheels)
 
 #### Turning & Rotation
+
 - **`t`**: Turn Left (forward + left rotation)
 - **`y`**: Turn Right (forward + right rotation)
 - **`c`/`C`**: Rotate Clockwise (spin in place)
 - **`w`/`W`**: Rotate Counter-Clockwise (spin in place)
 
 #### Arc Movements (Curved paths)
+
 - **`a`/`A`**: Arc Left (gentle left curve)
 - **`j`/`J`**: Arc Right (gentle right curve)
 
 #### Speed Control (50%-100%)
+
 - **`5`**: 50% speed
 - **`6`**: 60% speed
 - **`7`**: 70% speed
@@ -339,10 +386,12 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 - **`0`**: 100% speed (full speed)
 
 #### Lifter Control
+
 - **`u`/`U`**: Lift Up
 - **`d`/`D`**: Lift Down
 
 #### System Commands
+
 - **`s`/`S`**: Emergency Stop (all motors)
 - **`p`/`P`**: Print Status (motor RPM, PID values)
 - **`1-4`**: Test individual motors (FULL POWER - 4000/4096 max speed)
@@ -362,6 +411,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 ### Raspberry Pi Integration Examples
 
 #### Python Serial Control:
+
 ```python
 import serial
 import time
@@ -400,6 +450,7 @@ send_command('d')  # Lift down
 ```
 
 #### Simple Movement Sequences:
+
 ```python
 # Square pattern
 moves = ['f', 'r', 'f', 'r', 'f', 'r', 'f', 'r', 's']
@@ -414,6 +465,7 @@ send_command('h')  # Built-in figure-8 pattern
 ## Configuration
 
 ### Motor Parameters
+
 ```cpp
 const double MAX_RPM = 100.0;        // Maximum RPM for motors
 const double BASE_SPEED = 60.0;      // Base speed for movements
@@ -422,12 +474,14 @@ const double LIFT_SPEED = 50.0;      // Speed for lifter motor
 ```
 
 ### Encoder Settings
+
 ```cpp
 const int ENCODER_CPR = 28;          // Counts per revolution for PG28
 const double GEAR_RATIO = 1.0;       // Adjust if motors are geared
 ```
 
 ### PID Settings
+
 ```cpp
 // Default PID values (adjust based on your system)
 PID pid[4] = {
@@ -437,6 +491,7 @@ PID pid[4] = {
 ```
 
 ### Inverse Kinematics Tuning
+
 The code uses **strict selective wheel usage inverse kinematics** optimized for your hexagonal robot:
 
 - **Forward/Backward Dominant**: Only uses Front Left & Front Right wheels (Back wheel idle)
@@ -444,18 +499,22 @@ The code uses **strict selective wheel usage inverse kinematics** optimized for 
 - **Movement Threshold**: Back wheel activates only when sideways or rotation > 10% of max speed
 
 **Strict Rules:**
+
 - If `|vy| > 0.1` OR `|ω| > 0.1`: Use all 3 wheels (omnidirectional)
 - Otherwise: Use only FL & FR wheels (efficient forward/backward)
 
 If movement directions are incorrect, adjust the `MOTOR_ANGLES` array in the code:
+
 ```cpp
 const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
 ```
+
 - **FR (Front Right)**: 45° (positive for forward movement)
 - **FL (Front Left)**: 135° (negative for forward movement - counter-rotates with FR)
 - **Back**: 180° (activated only for significant sideways/rotation movement)
 
 **Key Improvements:**
+
 - ✅ **Strict Selective Usage**: Back wheel idle unless significant sideways/rotation needed
 - ✅ **Threshold-Based Control**: 10% threshold prevents unwanted wheel activation
 - ✅ **Proper Inverse Kinematics**: Uses `vx * cos(θ) + vy * sin(θ) + ω * R` formula
@@ -468,6 +527,7 @@ const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
 ## Omni Wheel Configuration
 
 The code is configured for your **3-wheel hexagonal omni robot**:
+
 - **Motor 1 (Lifter)**: Not used for navigation (angle = 0°)
 - **Motor 2 (Front Right)**: 45° from forward
 - **Motor 3 (Front Left)**: 135° from forward (for counter-rotation with FR)
@@ -499,24 +559,29 @@ Adjust `MOTOR_ANGLES[]` array if your physical wheel placement differs.
 ## Tuning
 
 ### PID Tuning
+
 1. Start with Kp=2.0, Ki=0.0, Kd=0.0
 2. Increase Ki until steady-state error is eliminated
 3. Add Kd to reduce overshoot
 4. Fine-tune Kp for faster response
 
 ### Speed Tuning
+
 Adjust `BASE_SPEED`, `TURN_SPEED`, and `LIFT_SPEED` constants based on your requirements and motor capabilities.
 
 ## Troubleshooting
 
 ### Common Issues
+
 1. **Motors not moving**: Check power connections and motor driver enable pins
 2. **Erratic movement**: Verify encoder connections and polarities
 3. **Poor PID performance**: Tune PID parameters for your specific motors
 4. **Wrong direction**: Check motor wiring and `MOTOR_ANGLES` configuration
 
 ### Debug Information
+
 Use the `p` command to print current motor status including:
+
 - Target RPM (setpoint)
 - Current RPM (input)
 - PID output values
@@ -524,8 +589,9 @@ Use the `p` command to print current motor status including:
 ## Dependencies
 
 - **PID_v1 library**: Install via Arduino IDE Library Manager
+- **YFROBOT Motor Driver Library**: [https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library](https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library) - Required for YFROBOT v2 Motor Driver Shield control
 - Arduino Mega board
-- R27889 motor driver shield
+- R27889 motor driver shield (YFROBOT v2 Shield)
 - 4x PG28 motors with encoders
 
 ## License
