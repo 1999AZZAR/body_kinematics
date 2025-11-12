@@ -1,215 +1,146 @@
-// Hexagonal 3-Wheel Omni Robot Control with 4 PG28 Motors
-// Using Arduino Mega with YFROBOT v2 Motor Driver Shield (I2C communication)
-//
-// Controls a hexagonal-shaped 3-wheel omni robot with 135° wheel spacing
-// YFROBOT v2 shield handles motor control via I2C with onboard RZ7889 IC.
-// Encoder signals connect directly from motors to Arduino pins.
-//
-// I2C Communication: Arduino SDA(20)/SCL(21) → YFROBOT v2 shield
-// Motor Control: Handled internally by shield via I2C commands
-//
-// Wheel Configuration (hexagonal 3-wheel robot):
-// Motor 1: Lifter (not used for navigation)
-// Motor 2: Front Right wheel at 45°
-// Motor 3: Front Left wheel at 315° (-45°)
-// Motor 4: Back wheel at 180°
-//
-// Encoder signals (Motor d# pins → Arduino direct):
-// Motor 1: d3→D3 (Data A), d5→D5 (Data B) - Lifter
-// Motor 2: d2→D2 (Data A), d4→D4 (Data B) - Front Right
-// Motor 3: d7→D7 (Data A), d6→D6 (Data B) - Front Left
-// Motor 4: d9→D9 (Data A), d8→D8 (Data B) - Back
-
-// Include PID library, YFROBOT Motor Driver library, and MPU6050 IMU library
 #include <PID_v1.h>
 #include <MotorDriver.h>
 #include <MPU6050.h>
-
-// Include configuration file
 #include "config.h"
 
-// Create YFROBOT motor driver object for IIC RZ7889
 MotorDriver motorDriver = MotorDriver(YF_IIC_RZ);
-
-// Create MPU6050 IMU object for precise movement control
 MPU6050 mpu6050;
 
-// Encoder pins (direct connection from motors to Arduino)
 struct EncoderPins {
   int encA;
   int encB;
 };
 
 EncoderPins encoders[4] = {
-  {3, 5},  // Motor 1 - Lifter (d3, d5)
-  {2, 4},  // Motor 2 - Front Right (d2, d4)
-  {7, 6},  // Motor 3 - Front Left (d7, d6)
-  {9, 8}   // Motor 4 - Back (d9, d8)
+  {3, 5},  // Motor 1 - Lifter
+  {2, 4},  // Motor 2 - Front Right
+  {7, 6},  // Motor 3 - Front Left
+  {9, 8}   // Motor 4 - Back
 };
 
-// Encoder variables with enhanced smoothing
 volatile long encoderCount[4] = {0, 0, 0, 0};
 long lastEncoderCount[4] = {0, 0, 0, 0};
 unsigned long lastEncoderTime[4] = {0, 0, 0, 0};
 
-// Encoder smoothing and filtering
 double rpmHistory[4][RPM_FILTER_SIZE] = {0};
 int rpmHistoryIndex[4] = {0};
 double filteredRPM[4] = {0, 0, 0, 0};
 double smoothedRPM[4] = {0, 0, 0, 0};
-double rpmAlpha = RPM_ALPHA; // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
-double rpmAlphaFast = RPM_ALPHA_FAST; // Ultra-responsive smoothing during fast rotation
+double rpmAlpha = RPM_ALPHA;
+double rpmAlphaFast = RPM_ALPHA_FAST;
 
-// Encoder-based acceleration limiting - different limits for different movements
 double lastRPM[4] = {0, 0, 0, 0};
-double maxRPMChange = MAX_RPM_CHANGE; // Maximum RPM change per sample (for smooth acceleration)
-double maxRPMChangeRotation = MAX_RPM_CHANGE_ROTATION; // AGGRESSIVE changes for rotation (c/w commands)
+double maxRPMChange = MAX_RPM_CHANGE;
+double maxRPMChangeRotation = MAX_RPM_CHANGE_ROTATION;
 
-// Position tracking
 long totalEncoderCount[4] = {0, 0, 0, 0};
-double motorPosition[4] = {0, 0, 0, 0}; // Position in revolutions
+double motorPosition[4] = {0, 0, 0, 0};
 
-// Motor synchronization features
-double syncError[4] = {0, 0, 0, 0};     // Synchronization error for each motor
-double syncKp = SYNC_KP;                // Synchronization PID gain (lower for stability)
-double targetSyncRPM = 0;               // Target synchronized RPM for active motors
-bool synchronizationActive = false;     // Enable synchronization mode
-int activeMotorCount = 0;               // Number of motors currently active
-bool motorIntendedActive[4] = {false, false, false, false}; // Which motors are intended to be active
+double syncError[4] = {0, 0, 0, 0};
+double syncKp = SYNC_KP;
+double targetSyncRPM = 0;
+bool synchronizationActive = false;
+int activeMotorCount = 0;
+bool motorIntendedActive[4] = {false, false, false, false};
 
-// Fast rotation response
-unsigned long lastRotationCommand = 0;  // Timestamp of last rotation command
-bool fastRotationMode = false;          // Enable fast response for rotation
+unsigned long lastRotationCommand = 0;
+bool fastRotationMode = false;
 
-// Motor control variables
-double setpoint[4] = {0, 0, 0, 0};     // Target RPM for each motor
-double input[4] = {0, 0, 0, 0};        // Current RPM
-double output[4] = {0, 0, 0, 0};       // PID output (PWM)
-bool motorsStopped = true;             // Flag to indicate if omni motors should be stopped
-bool lifterActive = false;             // Flag to indicate if lifter is active
+double setpoint[4] = {0, 0, 0, 0};
+double input[4] = {0, 0, 0, 0};
+double output[4] = {0, 0, 0, 0};
+bool motorsStopped = true;
+bool lifterActive = false;
 
-// Acceleration limiting for smooth movement
-double prev_setpoint[4] = {0, 0, 0, 0}; // Previous setpoints for acceleration limiting
+double prev_setpoint[4] = {0, 0, 0, 0};
+float speedMultiplier = 1.0;
 
-// Speed control variable
-float speedMultiplier = 1.0;           // Global speed multiplier (0.5 to 1.0)
+int16_t rawGyroX, rawGyroY, rawGyroZ;
+int16_t rawAccelX, rawAccelY, rawAccelZ;
+float gyroX, gyroY, gyroZ;
+float accelX, accelY, accelZ;
+float temperature;
+double robotHeading = 0.0;
+double targetHeading = 0.0;
+double headingError = 0.0;
+double headingKp = HEADING_KP;
+double headingCorrection = 0.0;
+unsigned long lastMPUUpdate = 0;
+bool imuInitialized = false;
+bool headingCorrectionEnabled = true;
+double gyroDriftX = 0.0;
+double gyroDriftY = 0.0;
+double gyroDriftZ = 0.0;
+int gyroCalibrationSamples = GYRO_CALIBRATION_SAMPLES;
+bool gyroCalibrated = false;
 
-// MPU6050 IMU variables for precise movement control
-int16_t rawGyroX, rawGyroY, rawGyroZ;  // Raw gyroscope readings
-int16_t rawAccelX, rawAccelY, rawAccelZ; // Raw accelerometer readings
-float gyroX, gyroY, gyroZ;             // Gyroscope readings (°/s)
-float accelX, accelY, accelZ;          // Accelerometer readings (m/s²)
-float temperature;                     // Temperature reading (°C)
-double robotHeading = 0.0;             // Integrated heading from gyro (°)
-double targetHeading = 0.0;            // Target heading for corrections
-double headingError = 0.0;             // Heading error for PID correction
-double headingKp = HEADING_KP;         // Heading correction PID gain
-double headingCorrection = 0.0;        // Heading correction output
-unsigned long lastMPUUpdate = 0;       // Last MPU update timestamp
-bool imuInitialized = false;           // IMU initialization status
-bool headingCorrectionEnabled = true;  // Enable heading correction
-double gyroDriftX = 0.0;               // Gyro X-axis drift compensation
-double gyroDriftY = 0.0;               // Gyro Y-axis drift compensation
-double gyroDriftZ = 0.0;               // Gyro Z-axis drift compensation
-int gyroCalibrationSamples = GYRO_CALIBRATION_SAMPLES; // Number of samples for gyro calibration (reduced for faster boot)
-bool gyroCalibrated = false;           // Gyro calibration status
-
-// PID controllers - AGGRESSIVE tuning for maximum responsiveness
 PID pid[4] = {
-  PID(&input[0], &output[0], &setpoint[0], Lifter_Kp, Lifter_Ki, Lifter_Kd, DIRECT),  // Lifter: conservative
-  PID(&input[1], &output[1], &setpoint[1], Omni_Kp, Omni_Ki, Omni_Kd, DIRECT),  // Omni: AGGRESSIVE for instant response
-  PID(&input[2], &output[2], &setpoint[2], Omni_Kp, Omni_Ki, Omni_Kd, DIRECT),  // Lower Kd to prevent oscillations
+  PID(&input[0], &output[0], &setpoint[0], Lifter_Kp, Lifter_Ki, Lifter_Kd, DIRECT),
+  PID(&input[1], &output[1], &setpoint[1], Omni_Kp, Omni_Ki, Omni_Kd, DIRECT),
+  PID(&input[2], &output[2], &setpoint[2], Omni_Kp, Omni_Ki, Omni_Kd, DIRECT),
   PID(&input[3], &output[3], &setpoint[3], Omni_Kp, Omni_Ki, Omni_Kd, DIRECT)
 };
 
-// Movement speed settings are now defined in config.h
-
-// Encoder constants are now defined in config.h
-
-
-// Omni wheel configuration constants are now defined in config.h
-
-// === SENSOR VARIABLES ===
-
-// IR Distance Sensor Data (Sharp GP2Y0A02YK0F)
 struct IRDistanceData {
-  float voltage;      // Raw voltage reading (0-5V)
-  float distance;     // Calculated distance in mm
-  bool valid;         // Whether reading is within valid range
+  float voltage;
+  float distance;
+  bool valid;
 };
 
-IRDistanceData irLeft1, irLeft2;      // Left side IR sensors
-IRDistanceData irRight1, irRight2;    // Right side IR sensors
-IRDistanceData irBack1, irBack2;      // Back side IR sensors
+IRDistanceData irLeft1, irLeft2;
+IRDistanceData irRight1, irRight2;
+IRDistanceData irBack1, irBack2;
 
-// HC-SR04 Ultrasonic Sensor Data
 struct UltrasonicData {
-  long duration;      // Echo pulse duration in microseconds
-  float distance;     // Calculated distance in cm
-  bool valid;         // Whether reading is valid (no timeout)
+  long duration;
+  float distance;
+  bool valid;
 };
 
-UltrasonicData ultrasonicFrontLeft;   // Front left ultrasonic
-UltrasonicData ultrasonicFrontRight;  // Front right ultrasonic
+UltrasonicData ultrasonicFrontLeft;
+UltrasonicData ultrasonicFrontRight;
 
-// Line Sensor Data
 struct LineSensorData {
-  int rawValue;       // Raw analog reading (0-1023)
-  bool onLine;         // Whether sensor detects line (above threshold)
+  int rawValue;
+  bool onLine;
 };
 
-LineSensorData lineLeft, lineCenter, lineRight;  // Line sensors
+LineSensorData lineLeft, lineCenter, lineRight;
 
-// Sensor timing variables
-unsigned long lastSensorUpdate = 0;     // Last time all sensors were updated
-const unsigned long SENSOR_UPDATE_INTERVAL = 100; // Update sensors every 100ms
+unsigned long lastSensorUpdate = 0;
+const unsigned long SENSOR_UPDATE_INTERVAL = 100;
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Omni Wheel Robot Control Starting...");
 
-  // Initialize YFROBOT motor driver
   motorDriver.begin();
-
-  // Configure motor directions (adjust if motors run in wrong direction)
-  motorDriver.motorConfig(1, 1, 1, 1); // All motors default direction
-
-  // Small delay to let I2C bus settle after motor driver initialization
+  motorDriver.motorConfig(1, 1, 1, 1);
   delay(500);
 
-  // Initialize MPU6050 IMU for precise movement control (optional)
-  // Note: IMU initialization may take ~2 seconds, robot works without it
   initializeMPU6050();
 
-  // Initialize encoder pins
   for (int i = 0; i < 4; i++) {
     pinMode(encoders[i].encA, INPUT_PULLUP);
     pinMode(encoders[i].encB, INPUT_PULLUP);
   }
 
-  // Attach interrupts for encoders
   attachInterrupt(digitalPinToInterrupt(encoders[0].encA), encoderISR0, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoders[1].encA), encoderISR1, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoders[2].encA), encoderISR2, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoders[3].encA), encoderISR3, CHANGE);
 
-  // Initialize PID controllers
   for (int i = 0; i < 4; i++) {
     pid[i].SetMode(AUTOMATIC);
     pid[i].SetSampleTime(PID_SAMPLE_TIME);
-    pid[i].SetOutputLimits(PID_OUTPUT_LIMIT_MIN, PID_OUTPUT_LIMIT_MAX);  // PWM range
+    pid[i].SetOutputLimits(PID_OUTPUT_LIMIT_MIN, PID_OUTPUT_LIMIT_MAX);
   }
 
-  // Initialize sensors
   Serial.println("Initializing sensors...");
-
-  // Set ultrasonic sensor pins
   pinMode(ULTRASONIC_FRONT_LEFT_TRIG, OUTPUT);
   pinMode(ULTRASONIC_FRONT_LEFT_ECHO, INPUT);
   pinMode(ULTRASONIC_FRONT_RIGHT_TRIG, OUTPUT);
   pinMode(ULTRASONIC_FRONT_RIGHT_ECHO, INPUT);
-
-  // Line sensors are analog, no initialization needed
   Serial.println("Sensors initialized.");
 
   Serial.println("Setup complete. Ready for commands.");
@@ -436,9 +367,7 @@ double applySynchronizationCorrection(int motorIndex, double targetRPM) {
   return targetRPM;
 }
 
-// Update motor control with enhanced PID, encoder processing, and synchronization
 void updateMotorControl() {
-  // Always update encoder readings for all motors
   unsigned long currentTime = millis();
 
   for (int i = 0; i < 4; i++) {
@@ -446,18 +375,13 @@ void updateMotorControl() {
     unsigned long timeDiff = currentTime - lastEncoderTime[i];
 
     if (timeDiff > 0) {
-      // Calculate raw RPM
       double revolutions = (double)countDiff / (ENCODER_CPR * GEAR_RATIO);
       double rawRPM = (revolutions * 60000.0) / timeDiff;
 
-      // Apply enhanced encoder processing for smoother control
       double filteredRPM = applyMovingAverageFilter(i, rawRPM);
       double smoothedRPM = applyExponentialSmoothing(i, filteredRPM);
-
-      // Use smoothed RPM for PID input
       input[i] = smoothedRPM;
 
-      // Update position tracking
       updateMotorPosition(i, countDiff);
     }
 
@@ -465,135 +389,79 @@ void updateMotorControl() {
     lastEncoderTime[i] = currentTime;
   }
 
-  // Update motor synchronization before PID computation (skip during fast rotation)
   if (!fastRotationMode) {
     updateMotorSynchronization();
   }
 
-  // Apply IMU-based heading corrections to motor setpoints
   applyIMUCorrections();
 
-  // Handle lifter motor (always controlled when active)
   if (lifterActive) {
-    // Compute PID for lifter only
     pid[0].Compute();
-
-    // Apply lifter motor control
     int lifterSpeed = map(output[0], -255, 255, -4096, 4096);
-    motorDriver.setSingleMotor(1, lifterSpeed); // Motor 1 (lifter)
+    motorDriver.setSingleMotor(1, lifterSpeed);
   } else {
-    // Stop lifter when not active
     motorDriver.stopMotor(M1);
   }
 
-  // Handle omni motors (only when not stopped)
   if (!motorsStopped) {
-    for (int i = 1; i < 4; i++) {  // Motors 1-3 (FR, FL, Back)
-      // Force stop motors that are not intended to be active
+    for (int i = 1; i < 4; i++) {
       if (!motorIntendedActive[i]) {
-        // Force stop this motor completely
-        motorDriver.stopMotor(i + 1);  // i+1 because YFROBOT uses 1-4 indexing
+        motorDriver.stopMotor(i + 1);
         setpoint[i] = 0;
-        continue;  // Skip PID computation for this motor
+        continue;
       }
-
-      // Compute PID only for intended active motors
       pid[i].Compute();
-
-      // Apply motor control using YFROBOT library
-      // Scale PID output (-255 to 255) to YFROBOT range (-4096 to 4096)
       int motorSpeed = map(output[i], -255, 255, -4096, 4096);
-      motorDriver.setSingleMotor(i+1, motorSpeed); // i+1 because YFROBOT uses 1-4 indexing
+      motorDriver.setSingleMotor(i+1, motorSpeed);
     }
   } else {
-    // Stop omni motors when not active
     motorDriver.stopMotor(M2);
     motorDriver.stopMotor(M3);
     motorDriver.stopMotor(M4);
   }
 }
 
-// Set motor speeds for hexagonal 3-wheel omni robot with STRICT selective wheel usage
 void setOmniSpeeds(double vx, double vy, double omega) {
-  // vx: forward/backward velocity (-1 to 1)
-  // vy: left/right velocity (-1 to 1)
-  // omega: rotation velocity (-1 to 1)
-  // STRICT RULES: Back wheel idle unless |vy| > 0.1 OR |ω| > 0.1
-  //
-  // MOTOR COMBINATIONS:
-  // Pure forward/backward: FL + FR only (back idle)
-  // Strafing/rotation: FL + FR + Back (all wheels)
-  // Examples (CORRECTED for physical motor mounting):
-  //   f(1,0,0): FR-0.707, FL+0.707, Back=0  (FL and FR counter-rotate)
-  //   l(0,-1,0): FR+0.707, FL-0.707, Back+1.0
-  //   c(0,0,1): FR+1.0, FL+1.0, Back+1.0
+  motorsStopped = false;
+  lifterActive = false;
 
-  motorsStopped = false;  // Enable omni motor control
-  lifterActive = false;   // Disable lifter when moving
-
-  // Reset intended active flags
   for (int i = 0; i < 4; i++) {
     motorIntendedActive[i] = false;
   }
 
-  // Use configuration values optimized for hexagonal robot geometry
-  const double wheel_distance = 1.0;      // Distance from robot center to wheels (normalized)
-  const double max_acceleration = 50.0;   // Maximum RPM change per PID cycle
-
-  // Calculate motor speeds with selective wheel usage
+  const double wheel_distance = 1.0;
   double motor_speeds[4] = {0, 0, 0, 0};
 
-  // STRICT RULES: Selective wheel usage based on dominant movement component
-  // Back wheel is IDLE unless significant sideways or rotational movement is required
-
-  // Calculate movement magnitudes for decision making
   double forward_component = abs(vx);
   double sideways_component = abs(vy);
   double rotation_component = abs(omega);
-
-  // Determine if back wheel should be used
   bool use_back_wheel = (sideways_component > 0.1) || (rotation_component > 0.1);
 
-  // Selective wheel usage based on strict rules
-  for (int i = 1; i < 4; i++) {  // Skip lifter motor (i=0)
+  for (int i = 1; i < 4; i++) {
     double angle_rad = MOTOR_ANGLES[i] * PI / 180.0;
 
     if (!use_back_wheel && i == 3) {
-      // STRICT RULE: Back wheel is completely idle unless significant sideways/rotation needed
-      // This ensures forward/backward movements use ONLY FL and FR wheels
       motor_speeds[i] = 0;
       motorIntendedActive[i] = false;
     } else {
-      // Standard omni wheel inverse kinematics when back wheel is needed:
-      // CORRECTED: vx is negated to match physical motor mounting direction
-      // motor_speed = (-vx) * cos(θ) + vy * sin(θ) + ω * R
-      // Angles: 45° (FR), 135° (FL), 180° (Back)
       motor_speeds[i] = ((-vx) * cos(angle_rad) + vy * sin(angle_rad) + (omega * wheel_distance)) * speedMultiplier;
     }
   }
 
-  // Find the maximum absolute speed for normalization
   double max_speed = 0.0;
   for (int i = 1; i < 4; i++) {
     max_speed = max(max_speed, abs(motor_speeds[i]));
   }
 
-  // Normalize speeds if any exceeds 1.0 to prevent saturation
   double scale_factor = (max_speed > 1.0) ? (1.0 / max_speed) : 1.0;
 
-  // Apply normalized speeds to setpoints with synchronization and acceleration limiting
   for (int i = 1; i < 4; i++) {
     double normalized_speed = motor_speeds[i] * scale_factor;
     double target_rpm = normalized_speed * BASE_SPEED;
     target_rpm = constrain(target_rpm, -MAX_RPM, MAX_RPM);
 
-    // Update intended active flags based on final normalized speeds
     motorIntendedActive[i] = (abs(normalized_speed) > 0.01);
-
-    // Apply motor synchronization correction for uniform speed
     target_rpm = applySynchronizationCorrection(i, target_rpm);
-
-    // Apply enhanced encoder-based acceleration limiting for smoother transitions
     target_rpm = applyAccelerationLimiting(i, target_rpm);
 
     setpoint[i] = target_rpm;
@@ -601,37 +469,7 @@ void setOmniSpeeds(double vx, double vy, double omega) {
   }
 }
 
-// MOTOR COMBINATIONS SUMMARY - OPTIMIZED FOR 2-WHEEL MOVEMENTS:
-// M1 = Lifter (independent)
-// M2 = Front Right (FR) at 45°
-// M3 = Front Left (FL) at 135°
-// M4 = Back at 180°
-//
-// 2-WHEEL MOVEMENTS (Primary): Only essential wheels for efficiency
-// Forward:       M2 + M3 only (FL + FR counter-rotate)
-// Backward:      M2 + M3 only (FL + FR counter-rotate)
-// Left:          M3 + M4 only (FL + Back)
-// Right:         M2 + M4 only (FR + Back)
-// Forward-Left:  M2 + M4 only (FR + Back)
-// Forward-Right: M3 + M4 only (FL + Back)
-// Backward-Left: M3 + M4 only (FL + Back)
-// Backward-Right:M2 + M4 only (FR + Back)
-//
-// 3-WHEEL MOVEMENTS (When needed): Rotation, complex maneuvers
-// RotateCW:      M2 + M3 + M4 (all wheels spin)
-//
-// EXACT SPEEDS (speedMultiplier=1.0) - 2-WHEEL OPTIMIZED:
-// Forward:       M2=-0.707, M3=+0.707, M4=0    (FL + FR)
-// Backward:      M2=+0.707, M3=-0.707, M4=0    (FL + FR)
-// Left:          M2=0,       M3=-0.8,   M4=+0.8  (FL + Back)
-// Right:         M2=+0.8,    M3=0,      M4=-0.8  (FR + Back)
-// Forward-Left:  M2=+0.8,    M3=0,      M4=+0.8  (FR + Back)
-// Forward-Right: M2=0,       M3=+0.8,   M4=+0.8  (FL + Back)
-// Backward-Left: M2=0,       M3=-0.8,   M4=-0.8  (FL + Back)
-// Backward-Right:M2=-0.8,    M3=0,      M4=-0.8  (FR + Back)
-// RotateCW:      M2=+1.0,    M3=+1.0,   M4=+1.0  (All wheels)
-
-// Movement functions - Basic
+// Movement functions
 void moveForward() {
   Serial.println("Moving Forward (FL & FR wheels only - back wheel idle)");
   setOmniSpeeds(1.0, 0.0, 0.0);
@@ -1197,17 +1035,11 @@ void executeCommand(String command) {
 
 // =============== SENSOR FUNCTIONS ===============
 
-// Read IR distance sensor and convert voltage to distance
 IRDistanceData readIRDistanceSensor(int pin) {
   IRDistanceData data;
-
-  // Read analog voltage (0-1023) and convert to voltage (0-5V)
   int rawValue = analogRead(pin);
   data.voltage = (float)rawValue * 5.0 / 1023.0;
 
-  // Convert voltage to distance using Sharp GP2Y0A02YK0F formula
-  // Distance = 1 / (voltage * scaling_factor + offset)
-  // For GP2Y0A02YK0F: Distance(mm) = 1 / (voltage * 0.0004 + 0.0002)
   if (data.voltage >= IR_VOLTAGE_MIN && data.voltage <= IR_VOLTAGE_MAX) {
     data.distance = 1.0 / (data.voltage * 0.0004 + 0.0002);
     data.valid = (data.distance >= IR_DISTANCE_MIN && data.distance <= IR_DISTANCE_MAX);
@@ -1215,11 +1047,9 @@ IRDistanceData readIRDistanceSensor(int pin) {
     data.distance = 0;
     data.valid = false;
   }
-
   return data;
 }
 
-// Update all IR distance sensors
 void updateIRDistanceSensors() {
   irLeft1 = readIRDistanceSensor(IR_LEFT_1_PIN);
   irLeft2 = readIRDistanceSensor(IR_LEFT_2_PIN);
@@ -1229,22 +1059,16 @@ void updateIRDistanceSensors() {
   irBack2 = readIRDistanceSensor(IR_BACK_2_PIN);
 }
 
-// Read HC-SR04 ultrasonic sensor
 UltrasonicData readUltrasonicSensor(int trigPin, int echoPin) {
   UltrasonicData data;
-
-  // Send trigger pulse
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
 
-  // Read echo pulse
   long duration = pulseIn(echoPin, HIGH, ULTRASONIC_TIMEOUT);
-
   if (duration > 0) {
-    // Calculate distance: duration * speed_of_sound / 2 (round trip)
     data.duration = duration;
     data.distance = (duration * SOUND_SPEED) / 2.0;
     data.valid = true;
@@ -1253,34 +1077,27 @@ UltrasonicData readUltrasonicSensor(int trigPin, int echoPin) {
     data.distance = 0;
     data.valid = false;
   }
-
   return data;
 }
 
-// Update all ultrasonic sensors
 void updateUltrasonicSensors() {
   ultrasonicFrontLeft = readUltrasonicSensor(ULTRASONIC_FRONT_LEFT_TRIG, ULTRASONIC_FRONT_LEFT_ECHO);
   ultrasonicFrontRight = readUltrasonicSensor(ULTRASONIC_FRONT_RIGHT_TRIG, ULTRASONIC_FRONT_RIGHT_ECHO);
 }
 
-// Read line sensor
 LineSensorData readLineSensor(int pin) {
   LineSensorData data;
-
   data.rawValue = analogRead(pin);
   data.onLine = (data.rawValue > LINE_SENSOR_THRESHOLD);
-
   return data;
 }
 
-// Update all line sensors
 void updateLineSensors() {
   lineLeft = readLineSensor(LINE_SENSOR_LEFT);
   lineCenter = readLineSensor(LINE_SENSOR_CENTER);
   lineRight = readLineSensor(LINE_SENSOR_RIGHT);
 }
 
-// Update all sensors
 void updateAllSensors() {
   if (millis() - lastSensorUpdate >= SENSOR_UPDATE_INTERVAL) {
     updateIRDistanceSensors();
@@ -1292,29 +1109,21 @@ void updateAllSensors() {
 
 // =============== MPU6050 IMU FUNCTIONS ===============
 
-// Initialize MPU6050 IMU sensor
 void initializeMPU6050() {
   Serial.println("Initializing MPU6050 IMU...");
-
-  // Initialize I2C communication
   Wire.begin();
-  Wire.setClock(400000); // Set I2C clock to 400kHz for faster communication
-
-  // Initialize MPU6050
+  Wire.setClock(400000);
   mpu6050.initialize();
 
-  // Test connection with timeout
   Serial.print("Testing MPU6050 connection...");
   bool connectionOK = false;
-  unsigned long startTime = millis();
 
-  // Try connection test 5 times with 200ms timeout (1 second total)
   for (int attempt = 0; attempt < 5; attempt++) {
     if (mpu6050.testConnection()) {
       connectionOK = true;
       break;
     }
-    delay(200);  // 200ms between attempts
+    delay(200);
     Serial.print(".");
   }
 
@@ -1322,38 +1131,24 @@ void initializeMPU6050() {
     Serial.println("MPU6050 connection successful!");
     imuInitialized = true;
 
-    // Calibrate gyroscope to remove drift
     calibrateGyroscope();
-
-    // Set initial heading
     robotHeading = 0.0;
     targetHeading = 0.0;
-
     Serial.println(" SUCCESS!");
     Serial.println("MPU6050 IMU ready for precise movement control!");
   } else {
     Serial.println(" FAILED!");
     Serial.println("MPU6050 connection failed! IMU features disabled.");
-    Serial.println("Troubleshooting:");
-    Serial.println("- Check connections: SDA->Pin20, SCL->Pin21, VCC->3.3V, GND->GND");
-    Serial.println("- Ensure MPU6050 is powered with 3.3V (NOT 5V!)");
-    Serial.println("- Check for I2C address conflicts (MPU6050 default: 0x68)");
-    Serial.println("- Motor driver may be interfering with I2C bus");
-    Serial.println("- Try disconnecting IMU temporarily to test motor functions");
-    Serial.println("- Robot will work normally without IMU");
     imuInitialized = false;
   }
 }
 
-// Calibrate gyroscope to remove drift
 void calibrateGyroscope() {
   Serial.println("Calibrating gyroscope... Keep robot stationary!");
-
   double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
 
   for (int i = 0; i < gyroCalibrationSamples; i++) {
     mpu6050.getRotation(&rawGyroX, &rawGyroY, &rawGyroZ);
-    // Convert raw values to degrees per second
     gyroX = rawGyroX / 131.0;
     gyroY = rawGyroY / 131.0;
     gyroZ = rawGyroZ / 131.0;
@@ -1362,10 +1157,8 @@ void calibrateGyroscope() {
     sumY += gyroY;
     sumZ += gyroZ;
 
-    if (i % 25 == 0) {  // Progress every 25 samples (every 0.25 seconds)
-      Serial.print(".");
-    }
-    delay(5);  // Reduced delay for faster calibration
+    if (i % 25 == 0) Serial.print(".");
+    delay(5);
   }
 
   gyroDriftX = sumX / gyroCalibrationSamples;
