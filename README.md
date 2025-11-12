@@ -91,6 +91,108 @@ If IMU connection fails during boot:
 5. **Test Without IMU**: Robot functions perfectly without IMU sensor
 6. **Reconnect Later**: Use `k` command to retry calibration after fixing connections
 
+## Sensor Integration
+
+### Sensor Hardware Setup
+
+**6x IR Distance Sensors (Sharp GP2Y0A02YK0F)** - Wall Alignment
+- **Range**: 20-150cm (200-1500mm)
+- **Output**: Analog voltage 0.4V-2.7V
+- **Pins**: A0-A5 (Left1, Left2, Right1, Right2, Back1, Back2)
+- **Purpose**: Wall alignment and obstacle detection on left/right/back sides
+
+**2x HC-SR04 Ultrasonic Sensors** - Front Distance
+- **Range**: 2-400cm
+- **Pins**: Trig(22,24), Echo(23,25) for Front Left/Right
+- **Purpose**: Front obstacle detection and precise front distance measurement
+
+**3x Line Sensors** - Line Following/Navigation
+- **Pins**: A6-A8 (Left, Center, Right)
+- **Purpose**: Line following, alignment with floor lines, navigation assistance
+
+### Sensor Features
+
+#### IR Distance Sensor Processing
+- **Voltage-to-Distance Conversion**: Automatic conversion using Sharp GP2Y0A02YK0F formula
+- **Validity Checking**: Only valid readings (within 200-1500mm range) are used
+- **Real-time Updates**: Sensors updated every 100ms in main loop
+- **Wall Alignment**: 2 sensors per side provide redundancy and better alignment
+
+#### Ultrasonic Sensor Processing
+- **Pulse Timing**: Standard HC-SR04 pulse timing with 30ms timeout
+- **Distance Calculation**: Automatic conversion using speed of sound (343 m/s)
+- **Timeout Handling**: Invalid readings flagged when no echo received
+- **Front Detection**: Left/right front sensors for obstacle avoidance
+
+#### Line Sensor Processing
+- **Threshold Detection**: Configurable threshold (default 512) for line detection
+- **Raw Value Reading**: Analog readings provide sensitivity information
+- **Three-Sensor Array**: Left/Center/Right for precise line following
+- **Navigation Aid**: Can be used for both line following and general navigation
+
+#### Sensor Integration Features
+- **Automatic Updates**: All sensors updated periodically in main loop
+- **Data Structures**: Organized sensor data with validity flags
+- **Status Display**: Sensor readings shown in `p` (status) command
+- **Detailed Readings**: `!` command provides comprehensive sensor data
+- **Error Handling**: Invalid readings properly flagged and handled
+
+### Sensor Commands
+
+#### Detailed Sensor Readings (`!` command)
+```
+=== Detailed Sensor Readings ===
+IR Distance Sensors (Sharp GP2Y0A02YK0F):
+  Left 1: 450.5mm (2.10V) - VALID
+  Left 2: 432.1mm (2.15V) - VALID
+  Right 1: 0.0mm (0.00V) - INVALID
+  ...
+
+HC-SR04 Ultrasonic Sensors:
+  Front Left: 125.4cm (7352us) - VALID
+  Front Right: 0.0cm (0us) - TIMEOUT
+
+Line Sensors (Threshold: 512):
+  Left: 234 - OFF LINE
+  Center: 678 - ON LINE
+  Right: 345 - OFF LINE
+========================
+```
+
+### Sensor Applications
+
+#### Wall Alignment
+- **Left/Right IR Sensors**: Maintain consistent distance from walls
+- **Redundant Sensors**: 2 sensors per side provide reliable alignment
+- **Range**: 20-150cm optimal for wall following in corridors
+
+#### Obstacle Avoidance
+- **Front Ultrasonic**: Detect obstacles before collision
+- **Wide Coverage**: Left/right front sensors cover approach angles
+- **Long Range**: Up to 4m detection range for navigation planning
+
+#### Line Following/Navigation
+- **Three-Sensor Array**: Precise line detection and centering
+- **Floor Navigation**: Follow lines or navigate to marked positions
+- **Dual Purpose**: Can be used for line following or general navigation
+
+### Sensor Troubleshooting
+
+#### IR Sensor Issues
+- **Invalid Readings**: Check voltage range (0.4-2.7V expected)
+- **Noisy Readings**: Add filtering or averaging if needed
+- **Range Limits**: Sensors may give invalid readings outside 20-150cm
+
+#### Ultrasonic Sensor Issues
+- **No Echo**: Check power, connections, and obstacle angles
+- **Timeout Errors**: May occur with absorbent surfaces or extreme angles
+- **Interference**: Multiple ultrasonics may interfere - use timing offsets
+
+#### Line Sensor Issues
+- **Threshold Tuning**: Adjust threshold (default 512) for your surface
+- **Lighting**: Consistent lighting important for reliable detection
+- **Surface Contrast**: Ensure good contrast between line and floor
+
 ### Complete Command Set for Raspberry Pi Integration
 
 #### Basic Movements (Cardinal Directions - 2 Wheels Each)

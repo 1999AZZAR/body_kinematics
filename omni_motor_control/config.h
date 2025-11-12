@@ -48,4 +48,43 @@ const int GYRO_CALIBRATION_SAMPLES = 100;   // Number of samples for gyro calibr
 // Hexagonal 3-wheel robot with 135° wheel spacing
 const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
 
+// === SENSOR PIN CONFIGURATION ===
+
+// IR Distance Sensors (Sharp GP2Y0A02YK0F) - Analog pins
+// Range: 20-150cm (200-1500mm), Output: 0.4V-2.7V
+const int IR_LEFT_1_PIN = A0;      // Left side IR sensor 1
+const int IR_LEFT_2_PIN = A1;      // Left side IR sensor 2
+const int IR_RIGHT_1_PIN = A2;     // Right side IR sensor 1
+const int IR_RIGHT_2_PIN = A3;     // Right side IR sensor 2
+const int IR_BACK_1_PIN = A4;      // Back side IR sensor 1
+const int IR_BACK_2_PIN = A5;      // Back side IR sensor 2
+
+// HC-SR04 Ultrasonic Sensors - Digital pins
+// Front distance sensors
+const int ULTRASONIC_FRONT_LEFT_TRIG = 22;   // Front left ultrasonic trigger
+const int ULTRASONIC_FRONT_LEFT_ECHO = 23;   // Front left ultrasonic echo
+const int ULTRASONIC_FRONT_RIGHT_TRIG = 24;  // Front right ultrasonic trigger
+const int ULTRASONIC_FRONT_RIGHT_ECHO = 25;  // Front right ultrasonic echo
+
+// Line Sensors (Digital/Analog pins) - for line following
+// Assembled side by side for robot alignment and navigation
+const int LINE_SENSOR_LEFT = A6;    // Left line sensor
+const int LINE_SENSOR_CENTER = A7;  // Center line sensor
+const int LINE_SENSOR_RIGHT = A8;   // Right line sensor
+
+// === SENSOR CONSTANTS ===
+
+// IR Distance Sensor Constants
+const float IR_VOLTAGE_MIN = 0.4;   // Minimum voltage output (1500mm)
+const float IR_VOLTAGE_MAX = 2.7;   // Maximum voltage output (200mm)
+const float IR_DISTANCE_MIN = 200;  // Minimum distance in mm (2.7V)
+const float IR_DISTANCE_MAX = 1500; // Maximum distance in mm (0.4V)
+
+// Ultrasonic Sensor Constants
+const float ULTRASONIC_TIMEOUT = 30000; // Timeout in microseconds (50ms max distance)
+const float SOUND_SPEED = 0.0343;       // Speed of sound in cm/us at 20°C
+
+// Line Sensor Constants
+const int LINE_SENSOR_THRESHOLD = 512;  // Threshold for line detection (0-1023)
+
 #endif // CONFIG_H

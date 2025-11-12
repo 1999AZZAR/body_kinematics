@@ -129,6 +129,41 @@ PID pid[4] = {
 
 // Omni wheel configuration constants are now defined in config.h
 
+// === SENSOR VARIABLES ===
+
+// IR Distance Sensor Data (Sharp GP2Y0A02YK0F)
+struct IRDistanceData {
+  float voltage;      // Raw voltage reading (0-5V)
+  float distance;     // Calculated distance in mm
+  bool valid;         // Whether reading is within valid range
+};
+
+IRDistanceData irLeft1, irLeft2;      // Left side IR sensors
+IRDistanceData irRight1, irRight2;    // Right side IR sensors
+IRDistanceData irBack1, irBack2;      // Back side IR sensors
+
+// HC-SR04 Ultrasonic Sensor Data
+struct UltrasonicData {
+  long duration;      // Echo pulse duration in microseconds
+  float distance;     // Calculated distance in cm
+  bool valid;         // Whether reading is valid (no timeout)
+};
+
+UltrasonicData ultrasonicFrontLeft;   // Front left ultrasonic
+UltrasonicData ultrasonicFrontRight;  // Front right ultrasonic
+
+// Line Sensor Data
+struct LineSensorData {
+  int rawValue;       // Raw analog reading (0-1023)
+  bool onLine;         // Whether sensor detects line (above threshold)
+};
+
+LineSensorData lineLeft, lineCenter, lineRight;  // Line sensors
+
+// Sensor timing variables
+unsigned long lastSensorUpdate = 0;     // Last time all sensors were updated
+const unsigned long SENSOR_UPDATE_INTERVAL = 100; // Update sensors every 100ms
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Omni Wheel Robot Control Starting...");
@@ -165,6 +200,18 @@ void setup() {
     pid[i].SetOutputLimits(PID_OUTPUT_LIMIT_MIN, PID_OUTPUT_LIMIT_MAX);  // PWM range
   }
 
+  // Initialize sensors
+  Serial.println("Initializing sensors...");
+
+  // Set ultrasonic sensor pins
+  pinMode(ULTRASONIC_FRONT_LEFT_TRIG, OUTPUT);
+  pinMode(ULTRASONIC_FRONT_LEFT_ECHO, INPUT);
+  pinMode(ULTRASONIC_FRONT_RIGHT_TRIG, OUTPUT);
+  pinMode(ULTRASONIC_FRONT_RIGHT_ECHO, INPUT);
+
+  // Line sensors are analog, no initialization needed
+  Serial.println("Sensors initialized.");
+
   Serial.println("Setup complete. Ready for commands.");
   Serial.println("=== MOVEMENT COMMANDS ===");
   Serial.println("Basic: f(forward), b(backward), l(left), r(right)");
@@ -175,8 +222,10 @@ void setup() {
   Serial.println("=== SPECIAL COMMANDS ===");
   Serial.println("Test: 1-4(motor test), g(calibration), h(figure-8)");
   Serial.println("Lifter: u(lift up), d(lift down)");
-  Serial.println("Speed: 5-9(speed 50%-90%), 0(speed 100%)");
-  Serial.println("IMU: i(status), k(calibrate), m(toggle correction), n(reset heading), v(emergency stop)");
+    Serial.println("Speed: 5-9(speed 50%-90%), 0(speed 100%)");
+    Serial.println("IMU: i(status), k(calibrate), m(toggle correction), n(reset heading)");
+    Serial.println("Sensors: !(detailed sensor readings)");
+    Serial.println("Emergency: v(emergency stop)");
 }
 
 void loop() {
@@ -189,6 +238,9 @@ void loop() {
 
   // Update MPU6050 sensor readings continuously
   updateMPU6050();
+
+  // Update all sensors periodically
+  updateAllSensors();
 
   // Check for serial commands
   if (Serial.available()) {
@@ -1027,9 +1079,189 @@ void executeCommand(char command) {
         motorIntendedActive[i] = false;
       }
       break;
-    default:
-      Serial.println("Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), i(imu status), k(calibrate), m(toggle IMU), n(reset heading), v(emergency stop)");
+    case '!':
+      // Detailed sensor readings
+      Serial.println("=== Detailed Sensor Readings ===");
+
+      // Force update sensors for fresh readings
+      updateIRDistanceSensors();
+      updateUltrasonicSensors();
+      updateLineSensors();
+
+      Serial.println("IR Distance Sensors (Sharp GP2Y0A02YK0F):");
+      Serial.print("  Left 1: ");
+      Serial.print(irLeft1.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irLeft1.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irLeft1.valid ? "VALID" : "INVALID");
+
+      Serial.print("  Left 2: ");
+      Serial.print(irLeft2.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irLeft2.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irLeft2.valid ? "VALID" : "INVALID");
+
+      Serial.print("  Right 1: ");
+      Serial.print(irRight1.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irRight1.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irRight1.valid ? "VALID" : "INVALID");
+
+      Serial.print("  Right 2: ");
+      Serial.print(irRight2.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irRight2.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irRight2.valid ? "VALID" : "INVALID");
+
+      Serial.print("  Back 1: ");
+      Serial.print(irBack1.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irBack1.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irBack1.valid ? "VALID" : "INVALID");
+
+      Serial.print("  Back 2: ");
+      Serial.print(irBack2.distance, 1);
+      Serial.print("mm (");
+      Serial.print(irBack2.voltage, 2);
+      Serial.print("V) - ");
+      Serial.println(irBack2.valid ? "VALID" : "INVALID");
+
+      Serial.println("HC-SR04 Ultrasonic Sensors:");
+      Serial.print("  Front Left: ");
+      Serial.print(ultrasonicFrontLeft.distance, 1);
+      Serial.print("cm (");
+      Serial.print(ultrasonicFrontLeft.duration);
+      Serial.print("us) - ");
+      Serial.println(ultrasonicFrontLeft.valid ? "VALID" : "TIMEOUT");
+
+      Serial.print("  Front Right: ");
+      Serial.print(ultrasonicFrontRight.distance, 1);
+      Serial.print("cm (");
+      Serial.print(ultrasonicFrontRight.duration);
+      Serial.print("us) - ");
+      Serial.println(ultrasonicFrontRight.valid ? "VALID" : "TIMEOUT");
+
+      Serial.println("Line Sensors (Threshold: 512):");
+      Serial.print("  Left: ");
+      Serial.print(lineLeft.rawValue);
+      Serial.print(" - ");
+      Serial.println(lineLeft.onLine ? "ON LINE" : "OFF LINE");
+
+      Serial.print("  Center: ");
+      Serial.print(lineCenter.rawValue);
+      Serial.print(" - ");
+      Serial.println(lineCenter.onLine ? "ON LINE" : "OFF LINE");
+
+      Serial.print("  Right: ");
+      Serial.print(lineRight.rawValue);
+      Serial.print(" - ");
+      Serial.println(lineRight.onLine ? "ON LINE" : "OFF LINE");
+
+      Serial.println("========================");
       break;
+    default:
+      Serial.println("Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), i(imu status), k(calibrate), m(toggle IMU), n(reset heading), !(sensor readings), v(emergency stop)");
+      break;
+  }
+}
+
+// =============== SENSOR FUNCTIONS ===============
+
+// Read IR distance sensor and convert voltage to distance
+IRDistanceData readIRDistanceSensor(int pin) {
+  IRDistanceData data;
+
+  // Read analog voltage (0-1023) and convert to voltage (0-5V)
+  int rawValue = analogRead(pin);
+  data.voltage = (float)rawValue * 5.0 / 1023.0;
+
+  // Convert voltage to distance using Sharp GP2Y0A02YK0F formula
+  // Distance = 1 / (voltage * scaling_factor + offset)
+  // For GP2Y0A02YK0F: Distance(mm) = 1 / (voltage * 0.0004 + 0.0002)
+  if (data.voltage >= IR_VOLTAGE_MIN && data.voltage <= IR_VOLTAGE_MAX) {
+    data.distance = 1.0 / (data.voltage * 0.0004 + 0.0002);
+    data.valid = (data.distance >= IR_DISTANCE_MIN && data.distance <= IR_DISTANCE_MAX);
+  } else {
+    data.distance = 0;
+    data.valid = false;
+  }
+
+  return data;
+}
+
+// Update all IR distance sensors
+void updateIRDistanceSensors() {
+  irLeft1 = readIRDistanceSensor(IR_LEFT_1_PIN);
+  irLeft2 = readIRDistanceSensor(IR_LEFT_2_PIN);
+  irRight1 = readIRDistanceSensor(IR_RIGHT_1_PIN);
+  irRight2 = readIRDistanceSensor(IR_RIGHT_2_PIN);
+  irBack1 = readIRDistanceSensor(IR_BACK_1_PIN);
+  irBack2 = readIRDistanceSensor(IR_BACK_2_PIN);
+}
+
+// Read HC-SR04 ultrasonic sensor
+UltrasonicData readUltrasonicSensor(int trigPin, int echoPin) {
+  UltrasonicData data;
+
+  // Send trigger pulse
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Read echo pulse
+  long duration = pulseIn(echoPin, HIGH, ULTRASONIC_TIMEOUT);
+
+  if (duration > 0) {
+    // Calculate distance: duration * speed_of_sound / 2 (round trip)
+    data.duration = duration;
+    data.distance = (duration * SOUND_SPEED) / 2.0;
+    data.valid = true;
+  } else {
+    data.duration = 0;
+    data.distance = 0;
+    data.valid = false;
+  }
+
+  return data;
+}
+
+// Update all ultrasonic sensors
+void updateUltrasonicSensors() {
+  ultrasonicFrontLeft = readUltrasonicSensor(ULTRASONIC_FRONT_LEFT_TRIG, ULTRASONIC_FRONT_LEFT_ECHO);
+  ultrasonicFrontRight = readUltrasonicSensor(ULTRASONIC_FRONT_RIGHT_TRIG, ULTRASONIC_FRONT_RIGHT_ECHO);
+}
+
+// Read line sensor
+LineSensorData readLineSensor(int pin) {
+  LineSensorData data;
+
+  data.rawValue = analogRead(pin);
+  data.onLine = (data.rawValue > LINE_SENSOR_THRESHOLD);
+
+  return data;
+}
+
+// Update all line sensors
+void updateLineSensors() {
+  lineLeft = readLineSensor(LINE_SENSOR_LEFT);
+  lineCenter = readLineSensor(LINE_SENSOR_CENTER);
+  lineRight = readLineSensor(LINE_SENSOR_RIGHT);
+}
+
+// Update all sensors
+void updateAllSensors() {
+  if (millis() - lastSensorUpdate >= SENSOR_UPDATE_INTERVAL) {
+    updateIRDistanceSensors();
+    updateUltrasonicSensors();
+    updateLineSensors();
+    lastSensorUpdate = millis();
   }
 }
 
@@ -1266,6 +1498,50 @@ void printStatus() {
     Serial.print("DISABLED");
   }
   Serial.println("");
+
+  // Sensor Status
+  Serial.println("=== Sensor Status ===");
+
+  // IR Distance Sensors
+  Serial.println("IR Distance Sensors (mm):");
+  Serial.print("  Left: ");
+  Serial.print(irLeft1.valid ? String(irLeft1.distance, 0) : "INVALID");
+  Serial.print(" | ");
+  Serial.println(irLeft2.valid ? String(irLeft2.distance, 0) : "INVALID");
+
+  Serial.print("  Right: ");
+  Serial.print(irRight1.valid ? String(irRight1.distance, 0) : "INVALID");
+  Serial.print(" | ");
+  Serial.println(irRight2.valid ? String(irRight2.distance, 0) : "INVALID");
+
+  Serial.print("  Back: ");
+  Serial.print(irBack1.valid ? String(irBack1.distance, 0) : "INVALID");
+  Serial.print(" | ");
+  Serial.println(irBack2.valid ? String(irBack2.distance, 0) : "INVALID");
+
+  // Ultrasonic Sensors
+  Serial.println("Ultrasonic Sensors (cm):");
+  Serial.print("  Front Left: ");
+  Serial.print(ultrasonicFrontLeft.valid ? String(ultrasonicFrontLeft.distance, 1) : "INVALID");
+  Serial.print(" | Front Right: ");
+  Serial.println(ultrasonicFrontRight.valid ? String(ultrasonicFrontRight.distance, 1) : "INVALID");
+
+  // Line Sensors
+  Serial.println("Line Sensors:");
+  Serial.print("  Left: ");
+  Serial.print(lineLeft.onLine ? "ON_LINE" : "OFF_LINE");
+  Serial.print(" (");
+  Serial.print(lineLeft.rawValue);
+  Serial.print(") | Center: ");
+  Serial.print(lineCenter.onLine ? "ON_LINE" : "OFF_LINE");
+  Serial.print(" (");
+  Serial.print(lineCenter.rawValue);
+  Serial.print(") | Right: ");
+  Serial.print(lineRight.onLine ? "ON_LINE" : "OFF_LINE");
+  Serial.print(" (");
+  Serial.print(lineRight.rawValue);
+  Serial.println(")");
+  Serial.println("==================");
 
   if (synchronizationActive) {
     Serial.print("Target Sync RPM: ");
