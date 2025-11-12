@@ -67,11 +67,11 @@ The system now includes **MPU6050 IMU sensor integration** for enhanced movement
 - **Temperature Monitoring**: MPU6050 temperature readings available
 - **Enhanced Stability**: IMU corrections applied to motor setpoints for precise control
 
-#### IMU Commands
-- **`i`/`I`**: IMU Status - Shows heading, target, error, correction, gyro/accel data, temperature
-- **`k`/`K`**: IMU Calibration - Recalibrates gyroscope (keep robot stationary)
-- **`m`/`M`**: Toggle IMU Correction - Enable/disable heading correction
-- **`n`/`N`**: Reset Heading - Sets current heading to 0° and resets target
+#### IMU Commands (Two-Character)
+- **`ir`**: IMU Status - Shows heading, target, error, correction, gyro/accel data, temperature
+- **`ic`**: IMU Calibration - Recalibrates gyroscope (keep robot stationary)
+- **`im`**: Toggle IMU Correction - Enable/disable heading correction
+- **`ih`**: Reset Heading - Sets current heading to 0° and resets target
 - **`v`/`V`**: Emergency Stop - Force stops all motors and resets all states
 
 #### IMU Integration Details
@@ -89,7 +89,7 @@ If IMU connection fails during boot:
 3. **I2C Conflicts**: Motor driver may interfere with I2C bus
 4. **Address Conflicts**: Default MPU6050 address 0x68 may conflict
 5. **Test Without IMU**: Robot functions perfectly without IMU sensor
-6. **Reconnect Later**: Use `k` command to retry calibration after fixing connections
+6. **Reconnect Later**: Use `ic` command to retry calibration after fixing connections
 
 ## Sensor Integration
 
@@ -134,12 +134,12 @@ If IMU connection fails during boot:
 - **Automatic Updates**: All sensors updated periodically in main loop
 - **Data Structures**: Organized sensor data with validity flags
 - **Status Display**: Sensor readings shown in `p` (status) command
-- **Detailed Readings**: `!` command provides comprehensive sensor data
+- **Detailed Readings**: `sr` command provides comprehensive sensor data
 - **Error Handling**: Invalid readings properly flagged and handled
 
 ### Sensor Commands
 
-#### Detailed Sensor Readings (`!` command)
+#### Detailed Sensor Readings (`sr` command)
 ```
 === Detailed Sensor Readings ===
 IR Distance Sensors (Sharp GP2Y0A02YK0F):
@@ -355,7 +355,8 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 **Rotation**: `t,y,c,w,a,j` (6 rotation options - turns use 2-3 wheels, pure spin uses 3)
 **Precision**: `5,6,7,8,9,0` (6 speed levels)
 **Utility**: `s,p,u,d` (essential controls)
-**IMU Control**: `i,k,m,n` (IMU status, calibration, correction toggle, heading reset)
+**IMU Control**: `ir,ic,im,ih` (IMU status, calibration, correction toggle, heading reset)
+**Sensor Control**: `sr` (detailed sensor readings)
 **Testing**: `1,2,3,4,g,h,o` (diagnostics and turbo mode)
 
 ### Raspberry Pi Integration Examples

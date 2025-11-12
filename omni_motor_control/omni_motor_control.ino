@@ -223,8 +223,8 @@ void setup() {
   Serial.println("Test: 1-4(motor test), g(calibration), h(figure-8)");
   Serial.println("Lifter: u(lift up), d(lift down)");
     Serial.println("Speed: 5-9(speed 50%-90%), 0(speed 100%)");
-    Serial.println("IMU: i(status), k(calibrate), m(toggle correction), n(reset heading)");
-    Serial.println("Sensors: !(detailed sensor readings)");
+    Serial.println("IMU: ir(status), ic(calibrate), im(toggle correction), ih(reset heading)");
+    Serial.println("Sensors: sr(detailed sensor readings)");
     Serial.println("Emergency: v(emergency stop)");
 }
 
@@ -243,12 +243,36 @@ void loop() {
   updateAllSensors();
 
   // Check for serial commands
-  if (Serial.available()) {
-    char command = Serial.read();
+  static String commandBuffer = "";
+  static unsigned long lastCommandTime = 0;
+
+  while (Serial.available()) {
+    char incomingChar = Serial.read();
+
     // Skip newline, carriage return, and other non-command characters
-    if (command != '\n' && command != '\r' && command != ' ' && command != '\t') {
-      executeCommand(command);
+    if (incomingChar != '\n' && incomingChar != '\r' && incomingChar != ' ' && incomingChar != '\t') {
+      commandBuffer += incomingChar;
+      lastCommandTime = millis();
+
+      // Check if we have a complete command
+      if (commandBuffer.length() >= 2) {
+        // Two-character sensor commands
+        if (commandBuffer == "ir" || commandBuffer == "ic" || commandBuffer == "im" || commandBuffer == "ih" || commandBuffer == "sr") {
+          executeCommand(commandBuffer);
+          commandBuffer = "";
+        }
+      } else if (commandBuffer.length() == 1) {
+        // Single-character motor commands - execute immediately
+        executeCommand(commandBuffer);
+        commandBuffer = "";
+      }
     }
+  }
+
+  // Timeout for incomplete commands (clear buffer after 500ms)
+  if (commandBuffer.length() > 0 && millis() - lastCommandTime > 500) {
+    Serial.println("Command timeout - incomplete command cleared");
+    commandBuffer = "";
   }
 }
 
@@ -881,8 +905,150 @@ void liftDown() {
 }
 
 // Execute commands from serial
-void executeCommand(char command) {
-  switch (command) {
+void executeCommand(String command) {
+  // Handle two-character sensor commands first
+  if (command == "ir") {
+    // IMU status
+    if (imuInitialized) {
+      Serial.println("IMU Status: ENABLED");
+      Serial.print("Heading: ");
+      Serial.print(robotHeading);
+      Serial.print("°, Target: ");
+      Serial.print(targetHeading);
+      Serial.print("°, Error: ");
+      Serial.print(headingError);
+      Serial.print("°, Correction: ");
+      Serial.println(headingCorrection);
+      Serial.print("Gyro: X=");
+      Serial.print(gyroX);
+      Serial.print("°, Y=");
+      Serial.print(gyroY);
+      Serial.print("°, Z=");
+      Serial.print(gyroZ);
+      Serial.println("°/s");
+      Serial.print("Accel: X=");
+      Serial.print(accelX);
+      Serial.print("m/s², Y=");
+      Serial.print(accelY);
+      Serial.print("m/s², Z=");
+      Serial.print(accelZ);
+      Serial.println("m/s²");
+      Serial.print("Temperature: ");
+      Serial.print(temperature);
+      Serial.println("°C");
+    } else {
+      Serial.println("IMU Status: DISABLED - MPU6050 not detected");
+    }
+    return;
+  } else if (command == "ic") {
+    // IMU calibration
+    if (imuInitialized) {
+      calibrateGyroscope();
+      resetHeading();
+    } else {
+      Serial.println("IMU not initialized - cannot calibrate");
+    }
+    return;
+  } else if (command == "im") {
+    // Toggle IMU heading correction
+    headingCorrectionEnabled = !headingCorrectionEnabled;
+    Serial.print("IMU Heading Correction: ");
+    Serial.println(headingCorrectionEnabled ? "ENABLED" : "DISABLED");
+    return;
+  } else if (command == "ih") {
+    // Reset heading to 0°
+    resetHeading();
+    return;
+  } else if (command == "sr") {
+    // Detailed sensor readings
+    Serial.println("=== Detailed Sensor Readings ===");
+
+    // Force update sensors for fresh readings
+    updateIRDistanceSensors();
+    updateUltrasonicSensors();
+    updateLineSensors();
+
+    Serial.println("IR Distance Sensors (Sharp GP2Y0A02YK0F):");
+    Serial.print("  Left 1: ");
+    Serial.print(irLeft1.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irLeft1.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irLeft1.valid ? "VALID" : "INVALID");
+
+    Serial.print("  Left 2: ");
+    Serial.print(irLeft2.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irLeft2.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irLeft2.valid ? "VALID" : "INVALID");
+
+    Serial.print("  Right 1: ");
+    Serial.print(irRight1.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irRight1.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irRight1.valid ? "VALID" : "INVALID");
+
+    Serial.print("  Right 2: ");
+    Serial.print(irRight2.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irRight2.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irRight2.valid ? "VALID" : "INVALID");
+
+    Serial.print("  Back 1: ");
+    Serial.print(irBack1.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irBack1.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irBack1.valid ? "VALID" : "INVALID");
+
+    Serial.print("  Back 2: ");
+    Serial.print(irBack2.distance, 1);
+    Serial.print("mm (");
+    Serial.print(irBack2.voltage, 2);
+    Serial.print("V) - ");
+    Serial.println(irBack2.valid ? "VALID" : "INVALID");
+
+    Serial.println("HC-SR04 Ultrasonic Sensors:");
+    Serial.print("  Front Left: ");
+    Serial.print(ultrasonicFrontLeft.distance, 1);
+    Serial.print("cm (");
+    Serial.print(ultrasonicFrontLeft.duration);
+    Serial.print("us) - ");
+    Serial.println(ultrasonicFrontLeft.valid ? "VALID" : "TIMEOUT");
+
+    Serial.print("  Front Right: ");
+    Serial.print(ultrasonicFrontRight.distance, 1);
+    Serial.print("cm (");
+    Serial.print(ultrasonicFrontRight.duration);
+    Serial.print("us) - ");
+    Serial.println(ultrasonicFrontRight.valid ? "VALID" : "TIMEOUT");
+
+    Serial.println("Line Sensors (Threshold: 512):");
+    Serial.print("  Left: ");
+    Serial.print(lineLeft.rawValue);
+    Serial.print(" - ");
+    Serial.println(lineLeft.onLine ? "ON LINE" : "OFF LINE");
+
+    Serial.print("  Center: ");
+    Serial.print(lineCenter.rawValue);
+    Serial.print(" - ");
+    Serial.println(lineCenter.onLine ? "ON LINE" : "OFF LINE");
+
+    Serial.print("  Right: ");
+    Serial.print(lineRight.rawValue);
+    Serial.print(" - ");
+    Serial.println(lineRight.onLine ? "ON LINE" : "OFF LINE");
+
+    Serial.println("========================");
+    return;
+  }
+
+  // Handle single-character motor commands
+  char singleCommand = command.charAt(0);
+  switch (singleCommand) {
     case 'f':
     case 'F':
       moveForward();
@@ -1006,63 +1172,7 @@ void executeCommand(char command) {
     case '2':
     case '3':
     case '4':
-      testMotor(command - '0');
-      break;
-    case 'i':
-    case 'I':
-      // IMU status and calibration
-      if (imuInitialized) {
-        Serial.println("IMU Status: ENABLED");
-        Serial.print("Heading: ");
-        Serial.print(robotHeading);
-        Serial.print("°, Target: ");
-        Serial.print(targetHeading);
-        Serial.print("°, Error: ");
-        Serial.print(headingError);
-        Serial.print("°, Correction: ");
-        Serial.println(headingCorrection);
-        Serial.print("Gyro: X=");
-        Serial.print(gyroX);
-        Serial.print("°, Y=");
-        Serial.print(gyroY);
-        Serial.print("°, Z=");
-        Serial.print(gyroZ);
-        Serial.println("°/s");
-        Serial.print("Accel: X=");
-        Serial.print(accelX);
-        Serial.print("m/s², Y=");
-        Serial.print(accelY);
-        Serial.print("m/s², Z=");
-        Serial.print(accelZ);
-        Serial.println("m/s²");
-        Serial.print("Temperature: ");
-        Serial.print(temperature);
-        Serial.println("°C");
-      } else {
-        Serial.println("IMU Status: DISABLED - MPU6050 not detected");
-      }
-      break;
-    case 'k':
-    case 'K':
-      // IMU calibration (recalibrate gyroscope)
-      if (imuInitialized) {
-        calibrateGyroscope();
-        resetHeading();
-      } else {
-        Serial.println("IMU not initialized - cannot calibrate");
-      }
-      break;
-    case 'm':
-    case 'M':
-      // Toggle IMU heading correction
-      headingCorrectionEnabled = !headingCorrectionEnabled;
-      Serial.print("IMU Heading Correction: ");
-      Serial.println(headingCorrectionEnabled ? "ENABLED" : "DISABLED");
-      break;
-    case 'n':
-    case 'N':
-      // Reset heading to 0°
-      resetHeading();
+      testMotor(singleCommand - '0');
       break;
     case 'v':
     case 'V':
@@ -1079,93 +1189,8 @@ void executeCommand(char command) {
         motorIntendedActive[i] = false;
       }
       break;
-    case '!':
-      // Detailed sensor readings
-      Serial.println("=== Detailed Sensor Readings ===");
-
-      // Force update sensors for fresh readings
-      updateIRDistanceSensors();
-      updateUltrasonicSensors();
-      updateLineSensors();
-
-      Serial.println("IR Distance Sensors (Sharp GP2Y0A02YK0F):");
-      Serial.print("  Left 1: ");
-      Serial.print(irLeft1.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irLeft1.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irLeft1.valid ? "VALID" : "INVALID");
-
-      Serial.print("  Left 2: ");
-      Serial.print(irLeft2.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irLeft2.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irLeft2.valid ? "VALID" : "INVALID");
-
-      Serial.print("  Right 1: ");
-      Serial.print(irRight1.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irRight1.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irRight1.valid ? "VALID" : "INVALID");
-
-      Serial.print("  Right 2: ");
-      Serial.print(irRight2.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irRight2.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irRight2.valid ? "VALID" : "INVALID");
-
-      Serial.print("  Back 1: ");
-      Serial.print(irBack1.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irBack1.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irBack1.valid ? "VALID" : "INVALID");
-
-      Serial.print("  Back 2: ");
-      Serial.print(irBack2.distance, 1);
-      Serial.print("mm (");
-      Serial.print(irBack2.voltage, 2);
-      Serial.print("V) - ");
-      Serial.println(irBack2.valid ? "VALID" : "INVALID");
-
-      Serial.println("HC-SR04 Ultrasonic Sensors:");
-      Serial.print("  Front Left: ");
-      Serial.print(ultrasonicFrontLeft.distance, 1);
-      Serial.print("cm (");
-      Serial.print(ultrasonicFrontLeft.duration);
-      Serial.print("us) - ");
-      Serial.println(ultrasonicFrontLeft.valid ? "VALID" : "TIMEOUT");
-
-      Serial.print("  Front Right: ");
-      Serial.print(ultrasonicFrontRight.distance, 1);
-      Serial.print("cm (");
-      Serial.print(ultrasonicFrontRight.duration);
-      Serial.print("us) - ");
-      Serial.println(ultrasonicFrontRight.valid ? "VALID" : "TIMEOUT");
-
-      Serial.println("Line Sensors (Threshold: 512):");
-      Serial.print("  Left: ");
-      Serial.print(lineLeft.rawValue);
-      Serial.print(" - ");
-      Serial.println(lineLeft.onLine ? "ON LINE" : "OFF LINE");
-
-      Serial.print("  Center: ");
-      Serial.print(lineCenter.rawValue);
-      Serial.print(" - ");
-      Serial.println(lineCenter.onLine ? "ON LINE" : "OFF LINE");
-
-      Serial.print("  Right: ");
-      Serial.print(lineRight.rawValue);
-      Serial.print(" - ");
-      Serial.println(lineRight.onLine ? "ON LINE" : "OFF LINE");
-
-      Serial.println("========================");
-      break;
     default:
-      Serial.println("Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), i(imu status), k(calibrate), m(toggle IMU), n(reset heading), !(sensor readings), v(emergency stop)");
+      Serial.println("Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), ir(imu status), ic(calibrate), im(toggle IMU), ih(reset heading), sr(sensor readings), v(emergency stop)");
       break;
   }
 }
