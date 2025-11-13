@@ -112,10 +112,11 @@ If IMU connection fails during boot:
 
 - **Range**: 20-150cm (200-1500mm)
 - **Output**: Analog voltage 0.4V-2.7V (linear relationship with distance)
-- **Pins**: A0-A5 (Left1, Left2, Right1, Right2, Back1, Back2)
+- **Pins**: A0-A3, A9-A10 (Left1, Left2, Right1, Right2, Back1, Back2)
 - **Purpose**: Wall alignment and obstacle detection on left/right/back sides
-- **Connection**: Connect sensor output pins directly to Arduino analog pins A0-A5
+- **Connection**: Connect sensor output pins directly to Arduino analog pins as specified
 - **Power**: Connect sensor VCC to Arduino 5V, GND to Arduino GND
+- **Note**: Back sensors moved to A9/A10 to avoid I2C conflict on A4/A5 (Uno shield design)
 
 **2x HC-SR04 Ultrasonic Sensors** - Front Distance
 

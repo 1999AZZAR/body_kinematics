@@ -47,8 +47,8 @@ A0  → IR Distance Left 1
 A1  → IR Distance Left 2
 A2  → IR Distance Right 1
 A3  → IR Distance Right 2
-A4  → IR Distance Back 1
-A5  → IR Distance Back 2
+A9  → IR Distance Back 1  (moved from A4 - I2C conflict on Uno shields)
+A10 → IR Distance Back 2  (moved from A5 - I2C conflict on Uno shields)
 ```
 
 #### Line Sensors (Analog Input)
@@ -147,8 +147,8 @@ IR Left 1  | A0         | Left wall alignment
 IR Left 2  | A1         | Left wall alignment (redundant)
 IR Right 1 | A2         | Right wall alignment
 IR Right 2 | A3         | Right wall alignment (redundant)
-IR Back 1  | A4         | Back wall alignment
-IR Back 2  | A5         | Back wall alignment (redundant)
+IR Back 1  | A9         | Back wall alignment (moved from A4 - I2C conflict)
+IR Back 2  | A10        | Back wall alignment (redundant, moved from A5 - I2C conflict)
 ```
 
 **IR Sensor Specifications:**
@@ -219,7 +219,7 @@ MPU6050 IMU → Arduino 3.3V/GND (IMPORTANT!)
 ### Used Pins (35 total)
 ```
 Digital: D2, D3, D4, D5, D6, D7, D8, D9, D20, D21, D22, D23, D24, D25
-Analog: A0, A1, A2, A3, A4, A5, A6, A7, A8
+Analog: A0, A1, A2, A3, A6, A7, A8, A9, A10
 ```
 
 ### Reserved Pins (Serial/I2C)
@@ -228,10 +228,10 @@ D0, D1 → Serial communication
 D20, D21 → I2C (SDA/SCL) - shared between motor driver and IMU
 ```
 
-### Available Pins (18 digital + 7 analog = 25 total)
+### Available Pins (18 digital + 5 analog = 23 total)
 ```
 Digital: D10-D19, D26-D53
-Analog: A9-A15
+Analog: A4, A5, A11-A15  (A4/A5 now available - moved IR sensors to A9/A10)
 ```
 
 ---

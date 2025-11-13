@@ -52,12 +52,13 @@ const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
 
 // IR Distance Sensors (Sharp GP2Y0A02YK0F) - Analog pins
 // Range: 20-150cm (200-1500mm), Output: 0.4V-2.7V
+// A4/A5 reserved for I2C on Arduino Uno shields
 const int IR_LEFT_1_PIN = A0;      // Left side IR sensor 1
 const int IR_LEFT_2_PIN = A1;      // Left side IR sensor 2
 const int IR_RIGHT_1_PIN = A2;     // Right side IR sensor 1
 const int IR_RIGHT_2_PIN = A3;     // Right side IR sensor 2
-const int IR_BACK_1_PIN = A4;      // Back side IR sensor 1
-const int IR_BACK_2_PIN = A5;      // Back side IR sensor 2
+const int IR_BACK_1_PIN = A9;      // Back side IR sensor 1 (moved from A4 - I2C conflict)
+const int IR_BACK_2_PIN = A10;     // Back side IR sensor 2 (moved from A5 - I2C conflict)
 
 // HC-SR04 Ultrasonic Sensors - Digital pins
 // Front distance sensors
