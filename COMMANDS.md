@@ -116,7 +116,21 @@ d / D  → Lift Down        (Lifter motor reverse)
 - **Speed**: LIFT_SPEED (50 RPM default)
 - **Motor**: Dedicated lifter motor (Motor 1)
 - **Independence**: Separate from omni wheel control
-- **Safety**: No interference with navigation motors
+- **Safety**: Hardware limit switches prevent over-travel
+
+**Limit Switch Safety:**
+- **Top Limit Switch** (D26): Prevents lifting beyond maximum height
+- **Bottom Limit Switch** (D27): Prevents lowering beyond minimum height
+- **Safety Timeout**: 5-second maximum movement time prevents stalls
+- **Automatic Stop**: Motor stops immediately when limit is reached
+
+**Compact Safety Codes:**
+See `LOGGING_CODES.md` for complete documentation of all compact codes used by the system.
+
+**Movement Logic:**
+- When at TOP limit: Can only move DOWN (away from limit)
+- When at BOTTOM limit: Can only move UP (away from limit)
+- When not at limits: Can move in both directions
 
 ---
 
@@ -124,7 +138,7 @@ d / D  → Lift Down        (Lifter motor reverse)
 
 ### Individual Motor Tests
 ```
-1  → Test Motor 1 (Lifter)     @ 97% speed for 3 seconds
+1  → Test Motor 1 (Lifter)     @ variable speed with limit switch safety
 2  → Test Motor 2 (FR Wheel)   @ 97% speed for 3 seconds
 3  → Test Motor 3 (FL Wheel)   @ 97% speed for 3 seconds
 4  → Test Motor 4 (Back Wheel) @ 97% speed for 3 seconds
@@ -246,6 +260,7 @@ Purpose: Comprehensive sensor data
 === Enhanced Motor Status ===
 Omni Motors Stopped: NO
 Lifter Active: NO
+Lifter Status: Top=OK Bottom=OK Timeout=NO
 Synchronization: ACTIVE (Motors: 2 3 4 active) | FastMode: OFF | ForceStop: none
 IMU: ENABLED, Heading=45.2°, Target=45.0°, Correction=ON (0.15)
 
@@ -360,7 +375,7 @@ sr → Verify sensor readings
 
 ### Invalid Commands
 ```
-Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), ir(imu status), ic(calibrate), im(toggle IMU), ih(reset heading), sr(sensor readings), v(emergency stop)
+Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), sr(sensor readings), ls(limit switch test), v(emergency stop)
 ```
 
 ### Incomplete Commands
@@ -465,13 +480,16 @@ def avoid_obstacle():
 | u/U | Lifter | Lift Up | Lifter | LIFT_SPEED |
 | d/D | Lifter | Lift Down | Lifter | -LIFT_SPEED |
 | 1-4 | Testing | Individual Motor Test | Single | 97% |
+| 1 (lifter) | Testing | Lifter Safety Test | Lifter | Variable |
 | g/G | Testing | Figure-8 Pattern | All | Variable |
 | h/H | Testing | Continuous Rotation | All 3 | Variable |
-| ir | IMU | IMU Status | N/A | N/A |
-| ic | IMU | IMU Calibrate | N/A | N/A |
-| im | IMU | IMU Toggle Correction | N/A | N/A |
-| ih | IMU | IMU Reset Heading | N/A | N/A |
+// IMU commands removed for now
+// | ir | IMU | IMU Status | N/A | N/A |
+// | ic | IMU | IMU Calibrate | N/A | N/A |
+// | im | IMU | IMU Toggle Correction | N/A | N/A |
+// | ih | IMU | IMU Reset Heading | N/A | N/A |
 | sr | Sensors | Sensor Readings | N/A | N/A |
+| ls | Lifter | Limit Switch Test | N/A | N/A |
 
 ---
 

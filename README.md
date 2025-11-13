@@ -50,10 +50,36 @@ Arduino Mega code for controlling a **hexagonal-shaped 3-wheel omni robot** usin
 - **Stop Protection**: PID control is disabled when motors are stopped to ensure true stopping
 - **State Management**: System tracks motor states (omni active/stopped, lifter active/inactive)
 - **Acceleration Limiting**: Smooth motor speed transitions prevent jerky movements
+- **Lifter Safety**: Hardware limit switches prevent over-travel with automatic motor shutdown
 
-### MPU6050 IMU Integration for Precise Movement Control
+### Lifter Safety System
 
-The system now includes **MPU6050 IMU sensor integration** for enhanced movement precision and stability:
+The lifter mechanism includes comprehensive safety features to prevent damage and ensure reliable operation:
+
+- **Hardware Limit Switches**: Top and bottom limit switches (D26, D27) prevent over-travel
+- **Automatic Motor Shutdown**: Motor stops immediately when limit switch is triggered
+- **Movement Timeout**: 5-second safety timeout prevents motor stalls
+- **Smart Movement Logic**: When at a limit, only allows movement away from that limit
+- **Continuous Monitoring**: Limit switches are checked during movement for immediate response
+- **Virtual Bumper Exclusion**: Lifter operates independently of obstacle avoidance system
+
+### System Logging
+
+The robot uses compact logging codes for memory efficiency. All logging codes are documented in `LOGGING_CODES.md` with detailed explanations and examples.
+
+### Compact Logging Codes
+
+The system uses memory-efficient compact logging codes for minimal memory usage. All codes are documented in detail in `LOGGING_CODES.md`.
+
+**Quick Reference:**
+- `VFF:x,y,m|vx,vy` = Virtual Force Field forces and resulting velocity
+- `LFT:c` = Lifter status and safety codes
+- `LSD:t,b` = Limit Switch Debug (raw values)
+- `LS:t,b` = Limit Switch status check
+
+### IMU Integration (Currently Disabled)
+
+**MPU6050 IMU functionality is temporarily disabled** for simplified testing and development. IMU features can be re-enabled by uncommenting the relevant code sections.
 
 #### IMU Hardware Setup
 

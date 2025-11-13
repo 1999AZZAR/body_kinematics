@@ -5,15 +5,15 @@
 #define CONFIG_H
 
 // === ENCODER CONFIGURATION ===
-#define RPM_FILTER_SIZE 5                    // Number of samples for RPM filtering
+#define RPM_FILTER_SIZE 6                    // Number of samples for RPM filtering
 const int ENCODER_CPR = 28;                  // Counts per revolution (for PG28 motors)
 const double GEAR_RATIO = 1.0;              // Gear ratio (adjust if geared motors)
 
 // === MOTOR SPEED LIMITS ===
-const double MAX_RPM = 100.0;               // Maximum RPM for motors
-const double BASE_SPEED = 60.0;             // Base speed for movements
+const double MAX_RPM = 160.0;               // Maximum RPM for motors
+const double BASE_SPEED = 80.0;             // Base speed for movements
 const double TURN_SPEED = 40.0;             // Speed for turning movements
-const double LIFT_SPEED = 50.0;             // Speed for lifter motor
+const double LIFT_SPEED = 60.0;             // Speed for lifter motor
 
 // === PID CONFIGURATION ===
 const double PID_SAMPLE_TIME = 100;         // PID sample time in ms
@@ -41,12 +41,21 @@ const double RPM_ALPHA = 0.6;               // Exponential smoothing factor (hig
 const double RPM_ALPHA_FAST = 0.9;          // Ultra-responsive smoothing during fast rotation
 
 // === IMU CONFIGURATION ===
-const double HEADING_KP = 2.0;              // Heading correction PID gain
+const double HEADING_KP = 1.5;              // Heading correction PID gain (reduced for stability)
+const double HEADING_KI = 0.0;              // Heading correction integral gain (disabled)
+const double HEADING_KD = 0.1;              // Heading correction derivative gain
 const int GYRO_CALIBRATION_SAMPLES = 100;   // Number of samples for gyro calibration
+const double GYRO_NOISE_THRESHOLD = 0.1;    // Maximum acceptable gyro noise in °/s
+const unsigned long IMU_TIMEOUT_MS = 100;   // Maximum time between IMU updates before warning
 
 // === MOTOR ANGLES (degrees) ===
-// Hexagonal 3-wheel robot with 135° wheel spacing
+// Triangular 3-wheel omni robot configuration
 const double MOTOR_ANGLES[4] = {0, 45, 135, 180};  // Lifter, FR, FL, Back
+
+// === ROBOT GEOMETRY ===
+// Distance from robot center to wheel contact point (normalized to 1.0 for simplicity)
+// In a real robot, this would be the actual distance in meters or consistent units
+const double ROBOT_RADIUS = 1.0;
 
 // === SENSOR PIN CONFIGURATION ===
 
@@ -75,11 +84,11 @@ const int LINE_SENSOR_RIGHT = A8;   // Right line sensor
 
 // === SENSOR CONSTANTS ===
 
-// IR Distance Sensor Constants
-const float IR_VOLTAGE_MIN = 0.4;   // Minimum voltage output (1500mm)
-const float IR_VOLTAGE_MAX = 2.7;   // Maximum voltage output (200mm)
-const float IR_DISTANCE_MIN = 200;  // Minimum distance in mm (2.7V)
-const float IR_DISTANCE_MAX = 1500; // Maximum distance in mm (0.4V)
+// IR Distance Sensor Constants (Sharp GP2Y0A02YK0F)
+const float IR_VOLTAGE_MIN = 0.25;  // Minimum voltage output (1500mm) - expanded range
+const float IR_VOLTAGE_MAX = 2.8;   // Maximum voltage output (20mm) - expanded range
+const float IR_DISTANCE_MIN = 20;  // Minimum distance in mm (closer range for safety)
+const float IR_DISTANCE_MAX = 1500; // Maximum distance in mm (0.25V)
 
 // Ultrasonic Sensor Constants
 const float ULTRASONIC_TIMEOUT = 30000; // Timeout in microseconds (50ms max distance)
@@ -88,19 +97,41 @@ const float SOUND_SPEED = 0.0343;       // Speed of sound in cm/us at 20°C
 // Line Sensor Constants
 const int LINE_SENSOR_THRESHOLD = 512;  // Threshold for line detection (0-1023)
 
+// === LIFTER LIMIT SWITCH CONFIGURATION ===
+const int LIFTER_TOP_LIMIT_PIN = 26;     // Top limit switch (normally open)
+const int LIFTER_BOTTOM_LIMIT_PIN = 27;  // Bottom limit switch (normally open)
+
+// Lifter Safety Constants
+const unsigned long LIFTER_SAFETY_TIMEOUT_MS = 5000; // Maximum time for lifter movement (5 seconds)
+const float LIFTER_SAFETY_CURRENT_THRESHOLD = 2.0;   // Current threshold for stall detection (if available)
+
 // === PERIMETER SAFETY CONSTANTS ===
 
-// IR Sensor Safety Distances (in mm)
-const float IR_SAFETY_DISTANCE_CRITICAL = 50.0;   // Critical zone: immediate stop (50mm = 5cm)
-const float IR_SAFETY_DISTANCE_WARNING = 250.0;   // Warning zone: slow down (250mm = 25cm)
+// Virtual Force Field Parameters (Artificial Potential Field Method)
+const float APF_INFLUENCE_DISTANCE_IR = 400.0;         // Influence distance for IR sensors (mm) - increased
+const float APF_INFLUENCE_DISTANCE_ULTRASONIC = 500.0; // Influence distance for ultrasonic sensors (mm) - increased
+const float APF_SCALING_FACTOR_IR = 2.0;               // Scaling factor for IR repulsive forces - increased
+const float APF_SCALING_FACTOR_ULTRASONIC = 3.0;       // Scaling factor for ultrasonic repulsive forces - increased
+const float APF_MAX_FORCE = 1.0;                       // Maximum repulsive force (normalized 0-1) - increased
 
-// Ultrasonic Sensor Safety Distances (converted to mm for consistency)
-const float ULTRASONIC_SAFETY_DISTANCE_CRITICAL = 50.0;   // Critical zone: immediate stop (50mm = 5cm)
-const float ULTRASONIC_SAFETY_DISTANCE_WARNING = 250.0;   // Warning zone: slow down (250mm = 25cm)
+// Legacy Safety Distances (kept for backward compatibility)
+const float IR_SAFETY_DISTANCE_CRITICAL = 80.0;        // Critical zone: immediate stop (100mm = 10cm)
+const float IR_SAFETY_DISTANCE_WARNING = 250.0;        // Warning zone: slow down (250mm = 25cm)
+const float ULTRASONIC_SAFETY_DISTANCE_CRITICAL = 150.0; // Critical zone: immediate stop (50mm = 5cm)
+const float ULTRASONIC_SAFETY_DISTANCE_WARNING = 250.0;  // Warning zone: slow down (150mm = 15cm)
 
-// Emergency Brake Settings
-const unsigned long BRAKE_COOLDOWN_MS = 3000;     // Minimum time between emergency brakes (3 seconds)
-const float EMERGENCY_DECELERATION = 0.7;         // Emergency deceleration factor (70% of current speed)
-const unsigned long PERIMETER_CHECK_INTERVAL = 100; // Check perimeter every 100ms
+// Emergency Brake Settings (fallback for extreme situations)
+const unsigned long BRAKE_COOLDOWN_MS = 2500;         // Minimum time between emergency brakes (2.5 seconds)
+const float EMERGENCY_DECELERATION = 0.5;             // Emergency deceleration factor (50% of current speed)
+const unsigned long PERIMETER_CHECK_INTERVAL = 50;     // Check perimeter every 50ms
+
+// Virtual Bumper Modes
+enum VirtualBumperMode {
+  LEGACY_BINARY,      // Original binary SAFE/WARNING/CRITICAL zones
+  POTENTIAL_FIELD,    // New Artificial Potential Field method
+  HYBRID             // Combined approach
+};
+
+const VirtualBumperMode CURRENT_BUMPER_MODE = POTENTIAL_FIELD; // Set desired mode
 
 #endif // CONFIG_H

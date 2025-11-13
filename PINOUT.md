@@ -29,6 +29,12 @@ D24 → Ultrasonic Front Right TRIGGER
 D25 → Ultrasonic Front Right ECHO
 ```
 
+#### Lifter Limit Switches
+```
+D26 → Lifter Top Limit Switch (Normally Open)
+D27 → Lifter Bottom Limit Switch (Normally Open)
+```
+
 #### Unused Digital Pins (Available for Expansion)
 ```
 D0, D1   → Serial RX/TX (Reserved)
@@ -216,9 +222,9 @@ MPU6050 IMU → Arduino 3.3V/GND (IMPORTANT!)
 
 ## Pin Usage Summary
 
-### Used Pins (35 total)
+### Used Pins (37 total)
 ```
-Digital: D2, D3, D4, D5, D6, D7, D8, D9, D20, D21, D22, D23, D24, D25
+Digital: D2, D3, D4, D5, D6, D7, D8, D9, D20, D21, D22, D23, D24, D25, D26, D27
 Analog: A0, A1, A2, A6, A7, A8, A9, A10, A11
 ```
 
@@ -228,9 +234,9 @@ D0, D1 → Serial communication
 D20, D21 → I2C (SDA/SCL) - shared between motor driver and IMU
 ```
 
-### Available Pins (18 digital + 7 analog = 25 total)
+### Available Pins (16 digital + 7 analog = 23 total)
 ```
-Digital: D10-D19, D26-D53  (D10-D12 now available - analog sensors use A9-A11)
+Digital: D10-D19, D28-D53  (D10-D12 now available - analog sensors use A9-A11)
 Analog: A3, A4, A5, A12, A13, A14, A15
 ```
 
@@ -316,4 +322,4 @@ Arduino Mega
 
 ---
 *Last updated: November 12, 2025*
-*Total pins used: 35/69 (51% utilization)*
+*Total pins used: 37/69 (54% utilization)*
