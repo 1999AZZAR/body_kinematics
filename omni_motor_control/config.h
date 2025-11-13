@@ -88,4 +88,19 @@ const float SOUND_SPEED = 0.0343;       // Speed of sound in cm/us at 20°C
 // Line Sensor Constants
 const int LINE_SENSOR_THRESHOLD = 512;  // Threshold for line detection (0-1023)
 
+// === PERIMETER SAFETY CONSTANTS ===
+
+// IR Sensor Safety Distances (in mm)
+const float IR_SAFETY_DISTANCE_CRITICAL = 50.0;   // Critical zone: immediate stop (50mm = 5cm)
+const float IR_SAFETY_DISTANCE_WARNING = 250.0;   // Warning zone: slow down (250mm = 25cm)
+
+// Ultrasonic Sensor Safety Distances (converted to mm for consistency)
+const float ULTRASONIC_SAFETY_DISTANCE_CRITICAL = 50.0;   // Critical zone: immediate stop (50mm = 5cm)
+const float ULTRASONIC_SAFETY_DISTANCE_WARNING = 250.0;   // Warning zone: slow down (250mm = 25cm)
+
+// Emergency Brake Settings
+const unsigned long BRAKE_COOLDOWN_MS = 3000;     // Minimum time between emergency brakes (3 seconds)
+const float EMERGENCY_DECELERATION = 0.7;         // Emergency deceleration factor (70% of current speed)
+const unsigned long PERIMETER_CHECK_INTERVAL = 100; // Check perimeter every 100ms
+
 #endif // CONFIG_H

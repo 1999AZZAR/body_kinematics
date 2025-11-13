@@ -110,6 +110,47 @@ LineSensorData lineLeft, lineCenter, lineRight;
 unsigned long lastSensorUpdate = 0;
 const unsigned long SENSOR_UPDATE_INTERVAL = 100;
 
+// === PERIMETER SAFETY SYSTEM VARIABLES ===
+unsigned long lastPerimeterCheck = 0;
+bool perimeterSafetyEnabled = true;  // Master enable/disable for perimeter safety
+
+enum SafetyLevel {
+  SAFE,
+  WARNING,
+  CRITICAL
+};
+
+enum MovementDirection {
+  STOPPED,
+  FORWARD,
+  BACKWARD,
+  LEFT,
+  RIGHT,
+  FORWARD_LEFT,
+  FORWARD_RIGHT,
+  BACKWARD_LEFT,
+  BACKWARD_RIGHT,
+  ROTATE_CW,
+  ROTATE_CCW,
+  COMPLEX  // Multiple directions or rotation
+};
+
+struct PerimeterStatus {
+  SafetyLevel frontLeftIR;
+  SafetyLevel frontRightIR;
+  SafetyLevel leftIR;
+  SafetyLevel rightIR;
+  SafetyLevel backIR;
+  SafetyLevel frontUltrasonic;
+  SafetyLevel overall;
+  bool emergencyBrake;
+  unsigned long lastObstacleTime;
+};
+
+PerimeterStatus perimeterStatus = {SAFE, SAFE, SAFE, SAFE, SAFE, SAFE, SAFE, false, 0};
+unsigned long lastAutoBrake = 0;
+MovementDirection currentMovementDirection = STOPPED;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Omni Wheel Robot Control Starting...");
@@ -144,19 +185,8 @@ void setup() {
   Serial.println("Sensors initialized.");
 
   Serial.println("Setup complete. Ready for commands.");
-  Serial.println("=== MOVEMENT COMMANDS ===");
-  Serial.println("Basic: f(forward), b(backward), l(left), r(right)");
-  Serial.println("Turn: t(turn left), y(turn right), c(rotate CW), w(rotate CCW)");
-  Serial.println("Diagonal: q(forward-left), e(forward-right), z(backward-left), x(backward-right)");
-  Serial.println("Arc: a(arc left), j(arc right)");
-  Serial.println("Control: s(stop), p(status), o(turbo mode toggle)");
-  Serial.println("=== SPECIAL COMMANDS ===");
-  Serial.println("Test: 1-4(motor test), g(calibration), h(figure-8)");
-  Serial.println("Lifter: u(lift up), d(lift down)");
-    Serial.println("Speed: 5-9(speed 50%-90%), 0(speed 100%)");
-    Serial.println("IMU: ir(status), ic(calibrate), im(toggle correction), ih(reset heading)");
-    Serial.println("Sensors: sr(detailed sensor readings)");
-    Serial.println("Emergency: v(emergency stop)");
+  Serial.println("NOTE: Press ENTER after each command to execute it.");
+  Serial.println("Cmd: f,b,l,r,t,y,c,w,q,e,z,x,a,j,s,p,o,1-4,g,h,u,d,5-9,0,ir,ic,im,ih,sr,se,sd,v");
 }
 
 void loop() {
@@ -173,37 +203,28 @@ void loop() {
   // Update all sensors periodically
   updateAllSensors();
 
-  // Check for serial commands
+  // Update perimeter safety monitoring - ALWAYS ACTIVE virtual bumper
+  updatePerimeterSafety();
+
+  // Check for serial commands - read complete lines terminated by newline
   static String commandBuffer = "";
-  static unsigned long lastCommandTime = 0;
 
   while (Serial.available()) {
     char incomingChar = Serial.read();
 
-    // Skip newline, carriage return, and other non-command characters
-    if (incomingChar != '\n' && incomingChar != '\r' && incomingChar != ' ' && incomingChar != '\t') {
-      commandBuffer += incomingChar;
-      lastCommandTime = millis();
-
-      // Check if we have a complete command
-      if (commandBuffer.length() >= 2) {
-        // Two-character sensor commands
-        if (commandBuffer == "ir" || commandBuffer == "ic" || commandBuffer == "im" || commandBuffer == "ih" || commandBuffer == "sr") {
+    if (incomingChar == '\n' || incomingChar == '\r') {
+      // End of command - process the complete line
+      if (commandBuffer.length() > 0) {
+        commandBuffer.trim(); // Remove any trailing whitespace
+        if (commandBuffer.length() > 0) {
           executeCommand(commandBuffer);
-          commandBuffer = "";
         }
-      } else if (commandBuffer.length() == 1) {
-        // Single-character motor commands - execute immediately
-        executeCommand(commandBuffer);
         commandBuffer = "";
       }
+    } else if (incomingChar != ' ' && incomingChar != '\t') {
+      // Add character to buffer (skip spaces and tabs within commands)
+      commandBuffer += incomingChar;
     }
-  }
-
-  // Timeout for incomplete commands (clear buffer after 500ms)
-  if (commandBuffer.length() > 0 && millis() - lastCommandTime > 500) {
-    Serial.println("Command timeout - incomplete command cleared");
-    commandBuffer = "";
   }
 }
 
@@ -424,6 +445,37 @@ void updateMotorControl() {
 void setOmniSpeeds(double vx, double vy, double omega) {
   motorsStopped = false;
   lifterActive = false;
+
+  // Determine movement direction for intelligent sensor selection
+  const double threshold = 0.1; // Minimum speed to consider as movement
+  bool hasForward = vx > threshold;
+  bool hasBackward = vx < -threshold;
+  bool hasLeft = vy > threshold;
+  bool hasRight = vy < -threshold;
+  bool hasRotation = abs(omega) > threshold;
+
+  if (hasRotation) {
+    if (omega > 0) currentMovementDirection = ROTATE_CW;
+    else currentMovementDirection = ROTATE_CCW;
+  } else if (hasForward && hasLeft) {
+    currentMovementDirection = FORWARD_LEFT;
+  } else if (hasForward && hasRight) {
+    currentMovementDirection = FORWARD_RIGHT;
+  } else if (hasBackward && hasLeft) {
+    currentMovementDirection = BACKWARD_LEFT;
+  } else if (hasBackward && hasRight) {
+    currentMovementDirection = BACKWARD_RIGHT;
+  } else if (hasForward) {
+    currentMovementDirection = FORWARD;
+  } else if (hasBackward) {
+    currentMovementDirection = BACKWARD;
+  } else if (hasLeft) {
+    currentMovementDirection = LEFT;
+  } else if (hasRight) {
+    currentMovementDirection = RIGHT;
+  } else {
+    currentMovementDirection = STOPPED;
+  }
 
   for (int i = 0; i < 4; i++) {
     motorIntendedActive[i] = false;
@@ -798,89 +850,19 @@ void executeCommand(String command) {
     resetHeading();
     return;
   } else if (command == "sr") {
-    // Detailed sensor readings
-    Serial.println("=== Detailed Sensor Readings ===");
-
-    // Force update sensors for fresh readings
-    updateIRDistanceSensors();
-    updateUltrasonicSensors();
-    updateLineSensors();
-
-    Serial.println("IR Distance Sensors (Sharp GP2Y0A02YK0F):");
-    Serial.print("  Left 1: ");
-    Serial.print(irLeft1.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irLeft1.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irLeft1.valid ? "VALID" : "INVALID");
-
-    Serial.print("  Left 2: ");
-    Serial.print(irLeft2.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irLeft2.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irLeft2.valid ? "VALID" : "INVALID");
-
-    Serial.print("  Right 1: ");
-    Serial.print(irRight1.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irRight1.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irRight1.valid ? "VALID" : "INVALID");
-
-    Serial.print("  Right 2: ");
-    Serial.print(irRight2.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irRight2.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irRight2.valid ? "VALID" : "INVALID");
-
-    Serial.print("  Back 1: ");
-    Serial.print(irBack1.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irBack1.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irBack1.valid ? "VALID" : "INVALID");
-
-    Serial.print("  Back 2: ");
-    Serial.print(irBack2.distance, 1);
-    Serial.print("mm (");
-    Serial.print(irBack2.voltage, 2);
-    Serial.print("V) - ");
-    Serial.println(irBack2.valid ? "VALID" : "INVALID");
-
-    Serial.println("HC-SR04 Ultrasonic Sensors:");
-    Serial.print("  Front Left: ");
-    Serial.print(ultrasonicFrontLeft.distance, 1);
-    Serial.print("cm (");
-    Serial.print(ultrasonicFrontLeft.duration);
-    Serial.print("us) - ");
-    Serial.println(ultrasonicFrontLeft.valid ? "VALID" : "TIMEOUT");
-
-    Serial.print("  Front Right: ");
-    Serial.print(ultrasonicFrontRight.distance, 1);
-    Serial.print("cm (");
-    Serial.print(ultrasonicFrontRight.duration);
-    Serial.print("us) - ");
-    Serial.println(ultrasonicFrontRight.valid ? "VALID" : "TIMEOUT");
-
-    Serial.println("Line Sensors (Threshold: 512):");
-    Serial.print("  Left: ");
-    Serial.print(lineLeft.rawValue);
-    Serial.print(" - ");
-    Serial.println(lineLeft.onLine ? "ON LINE" : "OFF LINE");
-
-    Serial.print("  Center: ");
-    Serial.print(lineCenter.rawValue);
-    Serial.print(" - ");
-    Serial.println(lineCenter.onLine ? "ON LINE" : "OFF LINE");
-
-    Serial.print("  Right: ");
-    Serial.print(lineRight.rawValue);
-    Serial.print(" - ");
-    Serial.println(lineRight.onLine ? "ON LINE" : "OFF LINE");
-
-    Serial.println("========================");
+    // Enhanced detailed sensor readings with comprehensive display
+    printEnhancedSensorReadings();
+    return;
+  } else if (command == "sd") {
+    // Disable perimeter safety system
+    perimeterSafetyEnabled = false;
+    Serial.println("Perimeter Safety System: DISABLED - Virtual bumper off");
+    Serial.println("WARNING: Robot will not automatically stop for obstacles!");
+    return;
+  } else if (command == "se") {
+    // Enable perimeter safety system
+    perimeterSafetyEnabled = true;
+    Serial.println("Perimeter Safety System: ENABLED - Virtual bumper active");
     return;
   }
 
@@ -1028,7 +1010,7 @@ void executeCommand(String command) {
       }
       break;
     default:
-      Serial.println("Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), ir(imu status), ic(calibrate), im(toggle IMU), ih(reset heading), sr(sensor readings), v(emergency stop)");
+      Serial.println("Unknown cmd: f,b,l,r,t,y,c,w,u,d,s,p,1-4,ir,ic,im,ih,sr,se,sd,v");
       break;
   }
 }
@@ -1264,6 +1246,361 @@ void resetHeading() {
   Serial.println("Heading reset to 0°");
 }
 
+// Enhanced sensor readings with comprehensive display and visual indicators
+void printEnhancedSensorReadings() {
+  Serial.println("Sensors:");
+
+  // IR sensors compact
+  Serial.print("IR:L=");
+  Serial.print(irLeft1.valid ? String(irLeft1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.print(irLeft2.valid ? String(irLeft2.distance, 0) : "INV");
+  Serial.print(" R=");
+  Serial.print(irRight1.valid ? String(irRight1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.print(irRight2.valid ? String(irRight2.distance, 0) : "INV");
+  Serial.print(" B=");
+  Serial.print(irBack1.valid ? String(irBack1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.println(irBack2.valid ? String(irBack2.distance, 0) : "INV");
+
+  // Ultrasonic sensors compact
+  Serial.print("Ultra:L=");
+  Serial.print(ultrasonicFrontLeft.valid ? String(ultrasonicFrontLeft.distance, 1) : "INV");
+  Serial.print(" R=");
+  Serial.println(ultrasonicFrontRight.valid ? String(ultrasonicFrontRight.distance, 1) : "INV");
+
+  // Line sensors compact
+  Serial.print("Line:L=");
+  Serial.print(lineLeft.onLine ? "ON" : "OFF");
+  Serial.print(" C=");
+  Serial.print(lineCenter.onLine ? "ON" : "OFF");
+  Serial.print(" R=");
+  Serial.println(lineRight.onLine ? "ON" : "OFF");
+
+  // Safety status
+  Serial.print("Safety:");
+  Serial.print(getSafetyLevelString(perimeterStatus.overall));
+  Serial.println(getSafetyLevelSymbol(perimeterStatus.overall));
+}
+
+// Determine which sensors to check based on movement direction
+void getRelevantSensorsForDirection(MovementDirection direction, bool& checkFrontIR, bool& checkBackIR, bool& checkLeftIR, bool& checkRightIR, bool& checkUltrasonic) {
+  // Default: check all sensors for safety
+  checkFrontIR = true;
+  checkBackIR = true;
+  checkLeftIR = true;
+  checkRightIR = true;
+  checkUltrasonic = true;
+
+  // For specific directions, only check relevant sensors to reduce false positives
+  switch (direction) {
+    case FORWARD:
+      checkFrontIR = true;      // Primary: front sensors for forward movement
+      checkBackIR = false;      // Don't check back sensors when moving forward
+      checkLeftIR = true;       // Keep side sensors for comprehensive safety
+      checkRightIR = true;
+      checkUltrasonic = true;   // Front ultrasonic for forward movement
+      break;
+
+    case BACKWARD:
+      checkFrontIR = false;     // Don't check front sensors when moving backward
+      checkBackIR = true;       // Primary: back sensors for backward movement
+      checkLeftIR = true;       // Keep side sensors
+      checkRightIR = true;
+      checkUltrasonic = false;  // No ultrasonic for backward (we only have front ultrasonic)
+      break;
+
+    case LEFT:
+      checkFrontIR = true;      // Keep front for comprehensive safety
+      checkBackIR = true;
+      checkLeftIR = true;       // Primary: left sensors for left movement
+      checkRightIR = false;     // Don't check right sensors when moving left
+      checkUltrasonic = true;
+      break;
+
+    case RIGHT:
+      checkFrontIR = true;      // Keep front for comprehensive safety
+      checkBackIR = true;
+      checkLeftIR = false;      // Don't check left sensors when moving right
+      checkRightIR = true;      // Primary: right sensors for right movement
+      checkUltrasonic = true;
+      break;
+
+    case FORWARD_LEFT:
+      checkFrontIR = true;      // Primary: front sensors
+      checkBackIR = false;
+      checkLeftIR = true;       // Primary: left sensors
+      checkRightIR = false;
+      checkUltrasonic = true;
+      break;
+
+    case FORWARD_RIGHT:
+      checkFrontIR = true;      // Primary: front sensors
+      checkBackIR = false;
+      checkLeftIR = false;
+      checkRightIR = true;      // Primary: right sensors
+      checkUltrasonic = true;
+      break;
+
+    case BACKWARD_LEFT:
+      checkFrontIR = false;
+      checkBackIR = true;       // Primary: back sensors
+      checkLeftIR = true;       // Primary: left sensors
+      checkRightIR = false;
+      checkUltrasonic = false;
+      break;
+
+    case BACKWARD_RIGHT:
+      checkFrontIR = false;
+      checkBackIR = true;       // Primary: back sensors
+      checkLeftIR = false;
+      checkRightIR = true;      // Primary: right sensors
+      checkUltrasonic = false;
+      break;
+
+    case ROTATE_CW:
+    case ROTATE_CCW:
+    case COMPLEX:
+    case STOPPED:
+      // Check all sensors for rotation or complex movements, or when stopped (for safety)
+      checkFrontIR = true;
+      checkBackIR = true;
+      checkLeftIR = true;
+      checkRightIR = true;
+      checkUltrasonic = true;
+      break;
+  }
+}
+
+void updatePerimeterSafety() {
+  if (!perimeterSafetyEnabled) return;  // Safety system disabled
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastPerimeterCheck < PERIMETER_CHECK_INTERVAL) return;
+
+  lastPerimeterCheck = currentTime;
+
+  // Determine which sensors to check based on movement direction
+  bool checkFrontIR, checkBackIR, checkLeftIR, checkRightIR, checkUltrasonic;
+  getRelevantSensorsForDirection(currentMovementDirection, checkFrontIR, checkBackIR, checkLeftIR, checkRightIR, checkUltrasonic);
+
+  // Reset status
+  perimeterStatus.emergencyBrake = false;
+  SafetyLevel highestLevel = SAFE;
+
+  // Check IR sensors (already in mm)
+  // Initialize safety levels
+  perimeterStatus.leftIR = SAFE;
+  perimeterStatus.rightIR = SAFE;
+
+  // Check left side IR sensors (only if relevant for current direction)
+  if (checkLeftIR) {
+    perimeterStatus.leftIR = SAFE;
+
+    if (irLeft1.valid) {
+      float dist_mm = irLeft1.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.leftIR = max(perimeterStatus.leftIR, level);
+    }
+
+    if (irLeft2.valid) {
+      float dist_mm = irLeft2.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.leftIR = max(perimeterStatus.leftIR, level);
+    }
+  }
+
+  // Check right side IR sensors (only if relevant for current direction)
+  if (checkRightIR) {
+    perimeterStatus.rightIR = SAFE;
+
+    if (irRight1.valid) {
+      float dist_mm = irRight1.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.rightIR = max(perimeterStatus.rightIR, level);
+    }
+
+    if (irRight2.valid) {
+      float dist_mm = irRight2.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.rightIR = max(perimeterStatus.rightIR, level);
+    }
+  }
+
+  // Update highest level with IR sensor results
+  highestLevel = max(highestLevel, perimeterStatus.leftIR);
+  highestLevel = max(highestLevel, perimeterStatus.rightIR);
+
+  // Check back sensors (only if relevant for current direction)
+  if (checkBackIR) {
+    perimeterStatus.backIR = SAFE;
+
+    // Check back IR sensors individually and take the most critical reading
+    if (irBack1.valid) {
+      float dist_mm = irBack1.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.backIR = max(perimeterStatus.backIR, level);
+    }
+
+    if (irBack2.valid) {
+      float dist_mm = irBack2.distance;
+      SafetyLevel level = (dist_mm <= IR_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= IR_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      perimeterStatus.backIR = max(perimeterStatus.backIR, level);
+    }
+
+    // Update highest level with back sensor results
+    highestLevel = max(highestLevel, perimeterStatus.backIR);
+  }
+
+  // Check ultrasonic sensors (only if relevant for current direction)
+  if (checkUltrasonic) {
+    perimeterStatus.frontUltrasonic = SAFE;
+
+    if (ultrasonicFrontLeft.valid) {
+      float dist_mm = ultrasonicFrontLeft.distance * 10.0;
+      SafetyLevel level = (dist_mm <= ULTRASONIC_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= ULTRASONIC_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      highestLevel = max(highestLevel, level);
+      perimeterStatus.frontUltrasonic = max(perimeterStatus.frontUltrasonic, level);
+    }
+
+    if (ultrasonicFrontRight.valid) {
+      float dist_mm = ultrasonicFrontRight.distance * 10.0;
+      SafetyLevel level = (dist_mm <= ULTRASONIC_SAFETY_DISTANCE_CRITICAL) ? CRITICAL :
+                         (dist_mm <= ULTRASONIC_SAFETY_DISTANCE_WARNING) ? WARNING : SAFE;
+      highestLevel = max(highestLevel, level);
+      perimeterStatus.frontUltrasonic = max(perimeterStatus.frontUltrasonic, level);
+    }
+  }
+
+  perimeterStatus.overall = highestLevel;
+
+  // Handle automatic emergency braking - ALWAYS ACTIVE
+  if (highestLevel == CRITICAL) {
+    if (currentTime - lastAutoBrake > BRAKE_COOLDOWN_MS) {
+      triggerEmergencyBrake();
+      lastAutoBrake = currentTime;
+      perimeterStatus.emergencyBrake = true;
+      perimeterStatus.lastObstacleTime = currentTime;
+    }
+  }
+}
+
+// Trigger emergency brake - automatic safety system
+void triggerEmergencyBrake() {
+  Serial.println("\n*** EMERGENCY BRAKE ACTIVATED - OBSTACLE DETECTED! ***");
+
+  // Show which sensors triggered the brake (any sensor at CRITICAL level)
+  Serial.println("Triggering sensors (CRITICAL zone):");
+
+  // Check IR sensors
+  if (perimeterStatus.leftIR == CRITICAL) {
+    Serial.println("  - LEFT IR sensors (critical distance)");
+    if (irLeft1.valid && irLeft1.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Left 1: " + String(irLeft1.distance) + "mm");
+    if (irLeft2.valid && irLeft2.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Left 2: " + String(irLeft2.distance) + "mm");
+  }
+
+  if (perimeterStatus.rightIR == CRITICAL) {
+    Serial.println("  - RIGHT IR sensors (critical distance)");
+    if (irRight1.valid && irRight1.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Right 1: " + String(irRight1.distance) + "mm");
+    if (irRight2.valid && irRight2.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Right 2: " + String(irRight2.distance) + "mm");
+  }
+
+  if (perimeterStatus.backIR == CRITICAL) {
+    Serial.println("  - BACK IR sensors (critical distance)");
+    if (irBack1.valid && irBack1.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Back 1: " + String(irBack1.distance) + "mm");
+    if (irBack2.valid && irBack2.distance <= IR_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * IR Back 2: " + String(irBack2.distance) + "mm");
+  }
+
+  // Check ultrasonic sensors
+  if (perimeterStatus.frontUltrasonic == CRITICAL) {
+    Serial.println("  - FRONT Ultrasonic sensors (critical distance)");
+    if (ultrasonicFrontLeft.valid && ultrasonicFrontLeft.distance * 10 <= ULTRASONIC_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * Ultrasonic Left: " + String(ultrasonicFrontLeft.distance) + "cm");
+    if (ultrasonicFrontRight.valid && ultrasonicFrontRight.distance * 10 <= ULTRASONIC_SAFETY_DISTANCE_CRITICAL)
+      Serial.println("    * Ultrasonic Right: " + String(ultrasonicFrontRight.distance) + "cm");
+  }
+
+  // Immediate emergency stop
+  motorsStopped = true;
+  lifterActive = false;
+  fastRotationMode = false;
+
+  // Stop all motors immediately
+  motorDriver.stopMotor(MAll);
+
+  // Reset all setpoints and motor states
+  for (int i = 0; i < 4; i++) {
+    setpoint[i] = 0;
+    prev_setpoint[i] = 0;
+    motorIntendedActive[i] = false;
+    smoothedRPM[i] = 0;
+    lastRPM[i] = 0;
+    syncError[i] = 0;
+  }
+
+  // Apply emergency deceleration to any active movement
+  speedMultiplier *= EMERGENCY_DECELERATION;
+
+  Serial.print("Emergency deceleration applied: ");
+  Serial.print(speedMultiplier * 100, 1);
+  Serial.println("%");
+  Serial.println("Use 's' to resume normal operation");
+  Serial.println("Virtual bumper system prevented collision!");
+}
+
+// Get safety level as string for display
+String getSafetyLevelString(SafetyLevel level) {
+  switch (level) {
+    case SAFE: return "SAFE";
+    case WARNING: return "WARNING";
+    case CRITICAL: return "CRITICAL";
+    default: return "UNKNOWN";
+  }
+}
+
+// Get safety level color symbol
+char getSafetyLevelSymbol(SafetyLevel level) {
+  switch (level) {
+    case SAFE: return '+';
+    case WARNING: return '!';
+    case CRITICAL: return 'X';
+    default: return '?';
+  }
+}
+
+// Get movement direction as string for display
+String getMovementDirectionString(MovementDirection direction) {
+  switch (direction) {
+    case STOPPED: return "STOPPED";
+    case FORWARD: return "FORWARD";
+    case BACKWARD: return "BACKWARD";
+    case LEFT: return "LEFT";
+    case RIGHT: return "RIGHT";
+    case FORWARD_LEFT: return "FORWARD-LEFT";
+    case FORWARD_RIGHT: return "FORWARD-RIGHT";
+    case BACKWARD_LEFT: return "BACKWARD-LEFT";
+    case BACKWARD_RIGHT: return "BACKWARD-RIGHT";
+    case ROTATE_CW: return "ROTATE CW";
+    case ROTATE_CCW: return "ROTATE CCW";
+    case COMPLEX: return "COMPLEX";
+    default: return "UNKNOWN";
+  }
+}
+
 // Print enhanced status with encoder data and synchronization
 void printStatus() {
   Serial.println("=== Enhanced Motor Status ===");
@@ -1317,32 +1654,57 @@ void printStatus() {
   }
   Serial.println("");
 
-  // Sensor Status
-  Serial.println("=== Sensor Status ===");
+  // Perimeter Safety Status
+  Serial.print("Virtual Bumper: ");
+  Serial.print(perimeterSafetyEnabled ? "ENABLED" : "DISABLED");
+  Serial.print(" | Direction: ");
+  Serial.print(getMovementDirectionString(currentMovementDirection));
+  Serial.print(" | Safety: ");
+  Serial.print(getSafetyLevelString(perimeterStatus.overall));
+  Serial.print(" ");
+  Serial.print(getSafetyLevelSymbol(perimeterStatus.overall));
+  if (perimeterStatus.emergencyBrake) {
+    Serial.print(" [BRAKE ACTIVE]");
+  } else if (perimeterStatus.lastObstacleTime > 0) {
+    unsigned long timeAgo = millis() - perimeterStatus.lastObstacleTime;
+    Serial.print(" [Last brake: ");
+    Serial.print(timeAgo / 1000.0, 1);
+    Serial.print("s ago]");
+  }
+  Serial.println("");
+
+  // Sensor Status with Direction-Based Monitoring
+  Serial.println("=== Sensor Status (Direction-Aware) ===");
+
+  // Determine which sensors are being monitored
+  bool checkFrontIR, checkBackIR, checkLeftIR, checkRightIR, checkUltrasonic;
+  getRelevantSensorsForDirection(currentMovementDirection, checkFrontIR, checkBackIR, checkLeftIR, checkRightIR, checkUltrasonic);
 
   // IR Distance Sensors
-  Serial.println("IR Distance Sensors (mm):");
-  Serial.print("  Left: ");
-  Serial.print(irLeft1.valid ? String(irLeft1.distance, 0) : "INVALID");
-  Serial.print(" | ");
-  Serial.println(irLeft2.valid ? String(irLeft2.distance, 0) : "INVALID");
+  Serial.print("IR(mm): L=");
+  Serial.print(irLeft1.valid ? String(irLeft1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.print(irLeft2.valid ? String(irLeft2.distance, 0) : "INV");
+  Serial.println(checkLeftIR ? "[MON]" : "[IGN]");
 
-  Serial.print("  Right: ");
-  Serial.print(irRight1.valid ? String(irRight1.distance, 0) : "INVALID");
-  Serial.print(" | ");
-  Serial.println(irRight2.valid ? String(irRight2.distance, 0) : "INVALID");
+  Serial.print("R=");
+  Serial.print(irRight1.valid ? String(irRight1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.print(irRight2.valid ? String(irRight2.distance, 0) : "INV");
+  Serial.println(checkRightIR ? "[MON]" : "[IGN]");
 
-  Serial.print("  Back: ");
-  Serial.print(irBack1.valid ? String(irBack1.distance, 0) : "INVALID");
-  Serial.print(" | ");
-  Serial.println(irBack2.valid ? String(irBack2.distance, 0) : "INVALID");
+  Serial.print("B=");
+  Serial.print(irBack1.valid ? String(irBack1.distance, 0) : "INV");
+  Serial.print(",");
+  Serial.print(irBack2.valid ? String(irBack2.distance, 0) : "INV");
+  Serial.println(checkBackIR ? "[MON]" : "[IGN]");
 
   // Ultrasonic Sensors
-  Serial.println("Ultrasonic Sensors (cm):");
-  Serial.print("  Front Left: ");
-  Serial.print(ultrasonicFrontLeft.valid ? String(ultrasonicFrontLeft.distance, 1) : "INVALID");
-  Serial.print(" | Front Right: ");
-  Serial.println(ultrasonicFrontRight.valid ? String(ultrasonicFrontRight.distance, 1) : "INVALID");
+  Serial.print("Ultra(cm): L=");
+  Serial.print(ultrasonicFrontLeft.valid ? String(ultrasonicFrontLeft.distance, 1) : "INV");
+  Serial.print(" R=");
+  Serial.print(ultrasonicFrontRight.valid ? String(ultrasonicFrontRight.distance, 1) : "INV");
+  Serial.println(checkUltrasonic ? "[MON]" : "[IGN]");
 
   // Line Sensors
   Serial.println("Line Sensors:");
