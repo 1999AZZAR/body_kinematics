@@ -1,6 +1,6 @@
 // I2C Scanner for Arduino Mega
 // Scans the I2C bus to detect connected devices
-// Useful for verifying IMU (MPU6050) and motor driver connections
+// Useful for verifying motor driver and servo connections
 
 #include <Wire.h>
 
@@ -30,12 +30,6 @@ void setup() {
 
       // Identify common devices
       switch (address) {
-        case 0x68:
-          Serial.print("MPU6050 IMU");
-          break;
-        case 0x69:
-          Serial.print("MPU6050 IMU (alternative address)");
-          break;
         case 0x40:
           Serial.print("YFROBOT Motor Driver");
           break;
@@ -65,25 +59,25 @@ void setup() {
     Serial.println("No I2C devices found!");
     Serial.println("Possible issues:");
     Serial.println("- Check SDA/SCL connections (D20/D21)");
-    Serial.println("- Verify power connections (3.3V for IMU, 5V for motor driver)");
+    Serial.println("- Verify power connections (5V for motor driver and servos)");
     Serial.println("- Check for short circuits or loose connections");
     Serial.println("- Ensure pull-up resistors are present");
   } else {
-    bool foundIMU = false;
     bool foundMotorDriver = false;
+    bool foundServoDriver = false;
 
     // Quick check for expected devices
-    Wire.beginTransmission(0x68);
-    if (Wire.endTransmission() == 0) foundIMU = true;
-
     Wire.beginTransmission(0x40);
     if (Wire.endTransmission() == 0) foundMotorDriver = true;
 
+    Wire.beginTransmission(0x20);
+    if (Wire.endTransmission() == 0) foundServoDriver = true;
+
     Serial.println("Expected devices:");
-    Serial.print("- MPU6050 IMU (0x68): ");
-    Serial.println(foundIMU ? "✓ DETECTED" : "✗ NOT FOUND");
     Serial.print("- YFROBOT Motor Driver (0x40): ");
     Serial.println(foundMotorDriver ? "✓ DETECTED" : "✗ NOT FOUND");
+    Serial.print("- PCA9685 Servo Driver (0x20): ");
+    Serial.println(foundServoDriver ? "✓ DETECTED" : "✗ NOT FOUND");
   }
 }
 

@@ -10,10 +10,10 @@ const int ENCODER_CPR = 28;                  // Counts per revolution (for PG28 
 const double GEAR_RATIO = 1.0;              // Gear ratio (adjust if geared motors)
 
 // === MOTOR SPEED LIMITS ===
-const double MAX_RPM = 160.0;               // Maximum RPM for motors
+const double MAX_RPM = 100.0;               // Maximum RPM for motors
 const double BASE_SPEED = 80.0;             // Base speed for movements
-const double TURN_SPEED = 40.0;             // Speed for turning movements
-const double LIFT_SPEED = 60.0;             // Speed for lifter motor
+const double TURN_SPEED = 30.0;             // Speed for turning movements
+const double LIFT_SPEED = 50.0;             // Speed for lifter motor
 
 // === PID CONFIGURATION ===
 const double PID_SAMPLE_TIME = 100;         // PID sample time in ms
@@ -26,27 +26,19 @@ const double Lifter_Ki = 0.5;
 const double Lifter_Kd = 0.1;
 
 const double Omni_Kp = 8.0;                 // Omni motors - aggressive for instant response
-const double Omni_Ki = 3.0;
-const double Omni_Kd = 0.2;
+const double Omni_Ki = 2.7;
+const double Omni_Kd = 0.5;
 
 // === MOTOR SYNCHRONIZATION ===
-const double SYNC_KP = 0.3;                 // Synchronization PID gain (lower for stability)
+const double SYNC_KP = 0.5;                 // Synchronization PID gain (lower for stability)
 
 // === ACCELERATION LIMITING ===
 const double MAX_RPM_CHANGE = 200.0;        // Maximum RPM change per sample (for smooth acceleration)
 const double MAX_RPM_CHANGE_ROTATION = 1000.0; // Aggressive changes for rotation (c/w commands)
 
 // === FILTERING AND SMOOTHING ===
-const double RPM_ALPHA = 0.6;               // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
+const double RPM_ALPHA = 0.7;               // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
 const double RPM_ALPHA_FAST = 0.9;          // Ultra-responsive smoothing during fast rotation
-
-// === IMU CONFIGURATION ===
-const double HEADING_KP = 1.5;              // Heading correction PID gain (reduced for stability)
-const double HEADING_KI = 0.0;              // Heading correction integral gain (disabled)
-const double HEADING_KD = 0.1;              // Heading correction derivative gain
-const int GYRO_CALIBRATION_SAMPLES = 100;   // Number of samples for gyro calibration
-const double GYRO_NOISE_THRESHOLD = 0.1;    // Maximum acceptable gyro noise in °/s
-const unsigned long IMU_TIMEOUT_MS = 100;   // Maximum time between IMU updates before warning
 
 // === MOTOR ANGLES (degrees) ===
 // Triangular 3-wheel omni robot configuration
@@ -104,6 +96,23 @@ const int LIFTER_BOTTOM_LIMIT_PIN = 27;  // Bottom limit switch (normally open)
 // Lifter Safety Constants
 const unsigned long LIFTER_SAFETY_TIMEOUT_MS = 5000; // Maximum time for lifter movement (5 seconds)
 const float LIFTER_SAFETY_CURRENT_THRESHOLD = 2.0;   // Current threshold for stall detection (if available)
+
+// === SERVO CONFIGURATION ===
+// YFROBOT shield servo channels (check your shield labeling)
+// SERVO 01 = channel 8, SERVO 02 = channel 9, etc.
+// If servos don't work, try channels 0, 1, 10, 11, etc.
+const int TILT_SERVO_CHANNEL = 8;      // YFROBOT shield servo channel for tilt servo
+const int GRIPPER_SERVO_CHANNEL = 9;   // YFROBOT shield servo channel for gripper servo
+
+// Servo angle limits (degrees)
+const int TILT_SERVO_MIN_ANGLE = 0;     // Minimum tilt angle
+const int TILT_SERVO_MAX_ANGLE = 180;   // Maximum tilt angle
+const int GRIPPER_SERVO_MIN_ANGLE = 0;  // Minimum gripper angle (open)
+const int GRIPPER_SERVO_MAX_ANGLE = 180; // Maximum gripper angle (closed)
+
+// Default servo positions
+const int TILT_SERVO_DEFAULT = 90;      // Default tilt position (centered)
+const int GRIPPER_SERVO_DEFAULT = 90;   // Default gripper position (half-open)
 
 // === PERIMETER SAFETY CONSTANTS ===
 

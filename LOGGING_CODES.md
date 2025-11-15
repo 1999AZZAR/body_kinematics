@@ -208,19 +208,17 @@ Format: `SYNC:active_motors,target_rpm`
 
 ---
 
-## IMU Status (IMU)
+## Servo Status (SERVO)
 
-Format: `IMU:status,heading,target,correction`
+Format: `SERVO:tilt_angle,gripper_angle`
 
 **Parameters:**
-- `status` = IMU operational status (1=OK, 0=ERROR)
-- `heading` = Current heading in degrees
-- `target` = Target heading in degrees
-- `correction` = Applied correction factor
+- `tilt_angle` = Current tilt servo angle (0-180°)
+- `gripper_angle` = Current gripper servo angle (0-180°)
 
-**Example:** `IMU:1,45.2,45.0,0.15`
+**Example:** `SERVO:90,45`
 
-**Meaning:** IMU OK, current heading 45.2°, target 45.0°, correction 0.15 applied
+**Meaning:** Tilt servo at 90° (centered), gripper servo at 45° (partially open)
 
 ---
 
@@ -261,15 +259,14 @@ Format: `ERR:code,component`
 
 **Parameters:**
 - `code` = Error code number
-- `component` = Affected component (0=GENERAL, 1=MOTOR1, 2=MOTOR2, 3=MOTOR3, 4=MOTOR4, 5=IMU, 6=SENSORS)
+- `component` = Affected component (0=GENERAL, 1=MOTOR1, 2=MOTOR2, 3=MOTOR3, 4=MOTOR4, 5=SENSORS)
 
 ### Common Error Codes
 - `1` = Communication timeout
 - `2` = Sensor failure
 - `3` = Motor stall detected
 - `4` = Limit switch malfunction
-- `5` = IMU calibration failed
-- `6` = Memory allocation failed
+- `5` = Memory allocation failed
 
 **Example:** `ERR:3,2`
 
@@ -326,7 +323,7 @@ Format: `PERF:cpu,mem,temp`
 
 When adding new compact logging codes:
 
-1. Choose a 2-3 letter prefix (e.g., VFF, LFT, IMU)
+1. Choose a 2-3 letter prefix (e.g., VFF, LFT, SEN)
 2. Use colon separator: `PREFIX:value1,value2,value3`
 3. Document in this file with parameter explanations
 4. Add inline comment in code: `// PREFIX: description`

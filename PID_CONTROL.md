@@ -328,14 +328,6 @@ if (!motorIntendedActive[i]) {
 }
 ```
 
-### IMU Integration
-```cpp
-// Heading corrections applied to motor setpoints
-if (headingCorrectionEnabled && motorIntendedActive[i]) {
-  setpoint[i] += headingCorrection;
-}
-```
-
 ### Speed Multiplier Integration
 ```cpp
 // Global speed scaling affects all setpoints
@@ -421,14 +413,6 @@ const double RPM_ALPHA_FAST = 0.9;
 4. Check for mechanical binding or friction differences
 ```
 
-### IMU Corrections Not Working
-```
-1. Verify IMU is initialized (ir command)
-2. Check headingCorrectionEnabled flag (im command)
-3. Verify motorIntendedActive flags
-4. Check IMU calibration (ic command)
-```
-
 ---
 
 ## PID Testing Commands
@@ -443,7 +427,6 @@ h            → Continuous rotation test
 ### PID Monitoring
 ```
 p            → Real-time PID status and motor data
-ir           → IMU status (if corrections enabled)
 ```
 
 ### Tuning Commands

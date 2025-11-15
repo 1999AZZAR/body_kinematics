@@ -59,17 +59,17 @@ bool lifterSafetyTimeout = false;
 double prev_setpoint[4] = {0, 0, 0, 0};
 float speedMultiplier = 1.0;
 
-int16_t rawGyroX, rawGyroY, rawGyroZ;
-int16_t rawAccelX, rawAccelY, rawAccelZ;
-float gyroX, gyroY, gyroZ;
-float accelX, accelY, accelZ;
+// int16_t rawGyroX, rawGyroY, rawGyroZ;
+// int16_t rawAccelX, rawAccelY, rawAccelZ;
+// float gyroX, gyroY, gyroZ;
+// float accelX, accelY, accelZ;
 float temperature;
 double robotHeading = 0.0;
 double targetHeading = 0.0;
 double headingError = 0.0;
-double headingKp = HEADING_KP;
-double headingKi = HEADING_KI;
-double headingKd = HEADING_KD;
+// double headingKp = HEADING_KP;
+// double headingKi = HEADING_KI;
+// double headingKd = HEADING_KD;
 double headingCorrection = 0.0;
 double headingIntegral = 0.0;
 double headingPreviousError = 0.0;
@@ -77,7 +77,7 @@ bool headingCorrectionEnabled = true;
 double gyroDriftX = 0.0;
 double gyroDriftY = 0.0;
 double gyroDriftZ = 0.0;
-int gyroCalibrationSamples = GYRO_CALIBRATION_SAMPLES;
+// int gyroCalibrationSamples = GYRO_CALIBRATION_SAMPLES;
 bool gyroCalibrated = false;
 
 PID pid[4] = {
@@ -115,6 +115,10 @@ LineSensorData lineLeft, lineCenter, lineRight;
 
 unsigned long lastSensorUpdate = 0;
 const unsigned long SENSOR_UPDATE_INTERVAL = 100;
+
+// === SERVO CONTROL VARIABLES ===
+int currentTiltAngle = TILT_SERVO_DEFAULT;
+int currentGripperAngle = GRIPPER_SERVO_DEFAULT;
 
 // === PERIMETER SAFETY SYSTEM VARIABLES ===
 unsigned long lastPerimeterCheck = 0;
@@ -201,6 +205,9 @@ void setup() {
   Serial.println("Step 1: Initializing motor driver...");
   motorDriver.begin();
   motorDriver.motorConfig(1, 1, 1, 1);
+
+  // Set PWM frequency to 50Hz for servo control (required!)
+  motorDriver.setPWMFreq(50);
   delay(500);
 
   // Step 2: Test I2C bus health after motor driver init
@@ -234,11 +241,35 @@ void setup() {
   pinMode(LIFTER_TOP_LIMIT_PIN, INPUT_PULLUP);
   pinMode(LIFTER_BOTTOM_LIMIT_PIN, INPUT_PULLUP);
 
+  // Initialize servos through YFROBOT shield channels
+  Serial.println("Initializing servos through YFROBOT shield channels...");
+
+  // Test servo channels with default positions
+  Serial.print("Setting tilt servo (channel ");
+  Serial.print(TILT_SERVO_CHANNEL);
+  Serial.print(") to ");
+  Serial.print(TILT_SERVO_DEFAULT);
+  Serial.println("°");
+  motorDriver.servoWrite(TILT_SERVO_CHANNEL, TILT_SERVO_DEFAULT);
+
+  Serial.print("Setting gripper servo (channel ");
+  Serial.print(GRIPPER_SERVO_CHANNEL);
+  Serial.print(") to ");
+  Serial.print(GRIPPER_SERVO_DEFAULT);
+  Serial.println("°");
+  motorDriver.servoWrite(GRIPPER_SERVO_CHANNEL, GRIPPER_SERVO_DEFAULT);
+
+  currentTiltAngle = TILT_SERVO_DEFAULT;
+  currentGripperAngle = GRIPPER_SERVO_DEFAULT;
+
+  Serial.println("Servos initialized.");
+
   Serial.println("Sensors initialized.");
 
   Serial.println("Setup complete. Ready for commands.");
   Serial.println("NOTE: Press ENTER after each command to execute it.");
-  Serial.println("Cmd: f,b,l,r,t,y,c,w,q,e,z,x,a,j,s,p,o,1-4,g,h,u,d,5-9,0,ir,ic,im,ih,sr,se,sd,ls,v");
+  Serial.println("Cmd: f,b,l,r,t,y,c,w,q,e,z,x,a,j,s,p,o,1-4,g,h,u,d,5-9,0,m,n,ir,ic,im,ih,sr,se,sd,ls,v");
+  Serial.println("Servo: m[u/d/c](tilt), n[o/c/h](gripper), ta<0-180>, ga<0-180>");
 }
 
 void loop() {
@@ -574,8 +605,8 @@ void setOmniSpeeds(double vx, double vy, double omega) {
       motorIntendedActive[i] = false;
     } else {
       // Correct inverse kinematics for omni wheels with virtual force field avoidance:
-      // ω_i = [sin(θ) * vx_modified - cos(θ) * vy_modified - R * ω_modified]
-      motor_speeds[i] = (sin(angle_rad) * vx_modified - cos(angle_rad) * vy_modified - (omega_modified * ROBOT_RADIUS)) * speedMultiplier;
+      // ω_i = [-vx_modified * cos(θ) + vy_modified * sin(θ) + R * ω_modified]
+      motor_speeds[i] = (-vx_modified * cos(angle_rad) + vy_modified * sin(angle_rad) + (omega_modified * ROBOT_RADIUS)) * speedMultiplier;
     }
   }
 
@@ -913,7 +944,30 @@ void liftDown() {
 
 // Execute commands from serial
 void executeCommand(String command) {
-  
+
+  // Handle servo angle commands (ta<angle>, ga<angle>)
+  if (command.startsWith("ta") || command.startsWith("TA")) {
+    // Tilt angle command: ta90
+    String angleStr = command.substring(2);
+    int angle = angleStr.toInt();
+    if (angle >= 0 && angle <= 180) {
+      setTiltAngle(angle);
+    } else {
+      Serial.println("Invalid tilt angle (0-180)");
+    }
+    return;
+  } else if (command.startsWith("ga") || command.startsWith("GA")) {
+    // Gripper angle command: ga45
+    String angleStr = command.substring(2);
+    int angle = angleStr.toInt();
+    if (angle >= 0 && angle <= 180) {
+      setGripperAngle(angle);
+    } else {
+      Serial.println("Invalid gripper angle (0-180)");
+    }
+    return;
+  }
+
   if (command == "sr") {
     // Enhanced detailed sensor readings with comprehensive display
     printEnhancedSensorReadings();
@@ -1082,10 +1136,123 @@ void executeCommand(String command) {
         motorIntendedActive[i] = false;
       }
       break;
+    // Servo commands
+    case 'm':
+    case 'M':
+      // Tilt servo commands (followed by second character)
+      if (command.length() > 1) {
+        char subCommand = command.charAt(1);
+        switch (subCommand) {
+          case 'u':
+          case 'U':
+            tiltUp();
+            break;
+          case 'd':
+          case 'D':
+            tiltDown();
+            break;
+          case 'c':
+          case 'C':
+            centerTilt();
+            break;
+          default:
+            Serial.println("Unknown tilt cmd: mu,md,mc");
+            break;
+        }
+      } else {
+        Serial.println("Tilt cmds: mu(up),md(down),mc(center)");
+      }
+      break;
+    case 'n':
+    case 'N':
+      // Gripper servo commands (followed by second character)
+      if (command.length() > 1) {
+        char subCommand = command.charAt(1);
+        switch (subCommand) {
+          case 'o':
+          case 'O':
+            openGripper();
+            break;
+          case 'c':
+          case 'C':
+            closeGripper();
+            break;
+          case 'h':
+          case 'H':
+            halfOpenGripper();
+            break;
+          default:
+            Serial.println("Unknown gripper cmd: no,nc,nh");
+            break;
+        }
+      } else {
+        Serial.println("Gripper cmds: no(open),nc(close),nh(half)");
+      }
+      break;
     default:
-      Serial.println("Unknown cmd: f,b,l,r,t,y,c,w,u,d,s,p,1-4,ir,ic,im,ih,sr,se,sd,ls,v");
+      Serial.println("Unknown cmd: f,b,l,r,t,y,c,w,u,d,s,p,1-4,m,g,ir,ic,im,ih,sr,se,sd,ls,v");
       break;
   }
+}
+
+// =============== SERVO CONTROL FUNCTIONS ===============
+
+// Set tilt servo angle (0-180 degrees)
+void setTiltAngle(int angle) {
+  angle = constrain(angle, TILT_SERVO_MIN_ANGLE, TILT_SERVO_MAX_ANGLE);
+  Serial.print("Setting tilt servo (channel ");
+  Serial.print(TILT_SERVO_CHANNEL);
+  Serial.print(") to ");
+  Serial.print(angle);
+  Serial.println("°");
+  motorDriver.servoWrite(TILT_SERVO_CHANNEL, angle);
+  currentTiltAngle = angle;
+  Serial.print("TILT:");
+  Serial.println(angle);
+}
+
+// Set gripper servo angle (0=open, 180=closed)
+void setGripperAngle(int angle) {
+  angle = constrain(angle, GRIPPER_SERVO_MIN_ANGLE, GRIPPER_SERVO_MAX_ANGLE);
+  Serial.print("Setting gripper servo (channel ");
+  Serial.print(GRIPPER_SERVO_CHANNEL);
+  Serial.print(") to ");
+  Serial.print(angle);
+  Serial.println("°");
+  motorDriver.servoWrite(GRIPPER_SERVO_CHANNEL, angle);
+  currentGripperAngle = angle;
+  Serial.print("GRIP:");
+  Serial.println(angle);
+}
+
+// Open gripper (set to minimum angle)
+void openGripper() {
+  setGripperAngle(GRIPPER_SERVO_MIN_ANGLE);
+}
+
+// Close gripper (set to maximum angle)
+void closeGripper() {
+  setGripperAngle(GRIPPER_SERVO_MAX_ANGLE);
+}
+
+// Tilt up (set to minimum angle)
+void tiltUp() {
+  setTiltAngle(TILT_SERVO_MIN_ANGLE);
+}
+
+// Tilt down (set to maximum angle)
+void tiltDown() {
+  setTiltAngle(TILT_SERVO_MAX_ANGLE);
+}
+
+// Center tilt (set to default position)
+void centerTilt() {
+  setTiltAngle(TILT_SERVO_DEFAULT);
+}
+
+// Half-open gripper (set to default position)
+void halfOpenGripper() {
+  setGripperAngle(GRIPPER_SERVO_DEFAULT);
 }
 
 // =============== SENSOR FUNCTIONS ===============
@@ -1967,6 +2134,11 @@ void printStatus() {
   Serial.print(lifterAtBottom ? "HIT" : "OK");
   Serial.print(" Timeout=");
   Serial.println(lifterSafetyTimeout ? "YES" : "NO");
+  Serial.print("Servo Status: Tilt=");
+  Serial.print(currentTiltAngle);
+  Serial.print("° Gripper=");
+  Serial.print(currentGripperAngle);
+  Serial.println("°");
   Serial.print("Synchronization: ");
   Serial.print(synchronizationActive ? "1" : "0");
   if (synchronizationActive) {

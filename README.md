@@ -77,56 +77,64 @@ The system uses memory-efficient compact logging codes for minimal memory usage.
 - `LSD:t,b` = Limit Switch Debug (raw values)
 - `LS:t,b` = Limit Switch status check
 
-### IMU Integration (Currently Disabled)
+### Servo Integration
 
-**MPU6050 IMU functionality is temporarily disabled** for simplified testing and development. IMU features can be re-enabled by uncommenting the relevant code sections.
+**Servo control is implemented** through the YFROBOT shield's dedicated servo channels (08 and 09). Servos are controlled via I2C communication with the shield's microcontroller.
 
-#### IMU Hardware Setup
+#### Servo Hardware Setup
 
-- **I2C Connection**: MPU6050 SDA/SCL connected to Arduino Mega SDA(20)/SCL(21)
-- **Power**: MPU6050 powered from Arduino 3.3V and GND (NOT 5V!)
-- **I2C Address**: Default 0x68 (may conflict with motor driver)
-- **Fast Boot**: Quick IMU initialization and calibration (~2 seconds total)
-- **Connection Check**: Automatic detection with helpful error messages
-- **Optional**: Robot works perfectly without IMU if connection fails
-- **Real-time Updates**: IMU data processed at 100Hz with the motor control loop
+- **Channels**: Tilt servo on Channel 8 (SERVO 01), Gripper servo on Channel 9 (SERVO 02)
+- **Control**: I2C communication through YFROBOT shield microcontroller with 50Hz PWM
+- **No Arduino Pins Used**: Control handled entirely by shield (no PWM pins required)
+- **Power**: Servos powered directly from YFROBOT shield
+- **Angle Range**: 0-180° for both servos
+- **PWM Frequency**: Set to 50Hz during initialization for proper servo operation
+- **Real-time Updates**: Servo angles displayed in status output with channel info
 
-#### IMU Features
+#### Servo Features
 
-- **Heading Tracking**: Gyroscope integration provides accurate robot heading (yaw)
-- **Drift Compensation**: Automatic gyroscope calibration removes drift
-- **Heading Correction**: PID-based heading correction maintains straight line movement
-- **Movement State Awareness**: Heading integration only active during movement to prevent drift accumulation
-- **Temperature Monitoring**: MPU6050 temperature readings available
-- **Enhanced Stability**: IMU corrections applied to motor setpoints for precise control
+- **Tilt Control**: Vertical tilt servo for camera/lidar positioning
+- **Gripper Control**: Gripper opening/closing for manipulation tasks
+- **Angle Feedback**: Current angles displayed in status commands
+- **Preset Positions**: Quick commands for common positions (up/down/center/open/close)
+- **Direct Angle Control**: Precise angle setting with `ta<angle>` and `ga<angle>` commands
+- **Integration**: Servo status integrated into main status (`p`) command
 
-#### IMU Commands (Two-Character)
+#### Servo Commands
 
-- **`ir`**: IMU Status - Shows heading, target, error, correction, gyro/accel data, temperature
-- **`ic`**: IMU Calibration - Recalibrates gyroscope (keep robot stationary)
-- **`im`**: Toggle IMU Correction - Enable/disable heading correction
-- **`ih`**: Reset Heading - Sets current heading to 0° and resets target
-- **`v`/`V`**: Emergency Stop - Force stops all motors and resets all states
+- **`mu`**: Tilt Up (0°)
+- **`md`**: Tilt Down (180°)
+- **`mc`**: Tilt Center (90°)
+- **`no`**: Gripper Open (0°)
+- **`nc`**: Gripper Close (180°)
+- **`nh`**: Gripper Half-Open (90°)
+- **`ta<angle>`**: Set tilt angle (0-180°)
+- **`ga<angle>`**: Set gripper angle (0-180°)
 
-#### IMU Integration Details
+#### Servo Integration Details
 
-- **Target Heading Setting**: Automatically set when starting linear movements (f,b,l,r,q,e,z,x)
-- **Correction Algorithm**: Proportional correction applied only to intended active motors during movement
-- **Motor State Awareness**: IMU corrections respect motor intended active flags for precise control
-- **Safety Limits**: Heading corrections clamped to prevent excessive adjustments
-- **Status Display**: IMU status integrated into main status (`p`) command
-- **Error Handling**: IMU failure doesn't stop robot operation (graceful degradation)
+- **Channel-based Control**: Uses YFROBOT shield's dedicated servo channels
+- **I2C Communication**: All servo control routed through shield microcontroller
+- **Status Display**: Servo angles shown in main status (`p`) command
+- **No Arduino Resources**: Doesn't consume PWM pins or timers
+- **Reliable Control**: Shield handles PWM generation for stable servo operation
 
-#### IMU Troubleshooting
+#### Servo Troubleshooting
 
-If IMU connection fails during boot:
+If servo commands are inconsistent or don't respond:
 
-1. **Check Power**: MPU6050 must use 3.3V, NOT 5V (will damage sensor)
-2. **Verify Connections**: SDA→Pin20, SCL→Pin21, VCC→3.3V, GND→GND
-3. **I2C Conflicts**: Motor driver may interfere with I2C bus
-4. **Address Conflicts**: Default MPU6050 address 0x68 may conflict
-5. **Test Without IMU**: Robot functions perfectly without IMU sensor
-6. **Reconnect Later**: Use `ic` command to retry calibration after fixing connections
+1. **PWM Frequency**: Ensure `setPWMFreq(50)` is called during setup (50Hz required for servos)
+2. **Channel Numbers**: Check your shield labeling - may be channels 0/1, 10/11, or others
+3. **Power Supply**: Verify YFROBOT shield has adequate power for servo operation
+4. **I2C Connection**: Test SDA/SCL connections and I2C bus health
+5. **Servo Compatibility**: Ensure servos are standard hobby servos (1500μs center pulse)
+6. **Debug Output**: Check serial output for "Setting servo (channel X) to Y°" messages
+7. **Alternative Channels**: Try different channel numbers if 8/9 don't work:
+   ```cpp
+   const int TILT_SERVO_CHANNEL = 0;      // Try 0, 1, 10, 11, etc.
+   const int GRIPPER_SERVO_CHANNEL = 1;
+   ```
+8. **Test Commands**: Start with `mc` (center) and `nc` (close) to verify basic function
 
 ## Sensor Integration
 
@@ -431,7 +439,7 @@ The system now includes advanced encoder processing, **motor synchronization**, 
 **Rotation**: `t,y,c,w,a,j` (6 rotation options - turns use 2-3 wheels, pure spin uses 3)
 **Precision**: `5,6,7,8,9,0` (6 speed levels)
 **Utility**: `s,p,u,d` (essential controls)
-**IMU Control**: `ir,ic,im,ih` (IMU status, calibration, correction toggle, heading reset)
+**Servo Control**: `mu,md,mc,no,nc,nh,ta<angle>,ga<angle>` (servo tilt and gripper control)
 **Sensor Control**: `sr` (detailed sensor readings)
 **Testing**: `1,2,3,4,g,h,o` (diagnostics and turbo mode)
 
@@ -624,3 +632,7 @@ Use the `p` command to print current motor status including:
 ## License
 
 This code is provided as-is for educational and robotics projects.
+
+---
+
+*Last updated: November 13, 2025*

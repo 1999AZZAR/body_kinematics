@@ -1,7 +1,7 @@
 # Arduino Mega Pinout Reference - Hexagonal 3-Wheel Omni Robot
 
 ## Overview
-Complete pinout documentation for the Arduino Mega-based omni robot control system with motor control, sensors, and IMU integration.
+Complete pinout documentation for the Arduino Mega-based omni robot control system with motor control and sensors.
 
 ---
 
@@ -34,6 +34,13 @@ D25 → Ultrasonic Front Right ECHO
 D26 → Lifter Top Limit Switch (Normally Open)
 D27 → Lifter Bottom Limit Switch (Normally Open)
 ```
+
+#### Servo Control Channels (YFROBOT Shield)
+```
+Channel 08 → Tilt Servo
+Channel 09 → Gripper Servo
+```
+*Servos controlled through YFROBOT shield microcontroller via I2C*
 
 #### Unused Digital Pins (Available for Expansion)
 ```
@@ -86,24 +93,6 @@ YFROBOT VCC → Arduino 5V
 - No direct PWM or DIR pin connections needed
 - Shield has onboard microcontroller for motor control
 - Ensure proper I2C pull-up resistors if needed
-
----
-
-## MPU6050 IMU Sensor Connections
-
-### I2C Communication (Shares bus with motor driver)
-```
-MPU6050 SDA → Arduino D20 (SDA)
-MPU6050 SCL → Arduino D21 (SCL)
-MPU6050 GND → Arduino GND
-MPU6050 VCC → Arduino 3.3V (IMPORTANT: Use 3.3V, NOT 5V!)
-```
-
-**Important Notes:**
-- MPU6050 requires 3.3V power supply (5V will damage the sensor)
-- Default I2C address: 0x68
-- May have I2C bus conflicts with motor driver
-- IMU is optional - robot functions without it
 
 ---
 
@@ -200,7 +189,7 @@ Right   | A8         | Right line detection
 VIN → External power supply (7-12V recommended)
 GND → Power ground
 5V → Logic power output (for sensors)
-3.3V → IMU power (MPU6050 only)
+3.3V → Low voltage output (for compatible sensors)
 ```
 
 ### Motor Power (Via YFROBOT Shield)
@@ -211,11 +200,10 @@ Logic Power → Arduino 5V/GND (via I2C)
 
 ### Sensor Power
 ```
-All Sensors → Arduino 5V/GND (except IMU which uses 3.3V)
+All Sensors → Arduino 5V/GND
 IR Sensors → Arduino 5V/GND
 Ultrasonic → Arduino 5V/GND
 Line Sensors → Arduino 5V/GND
-MPU6050 IMU → Arduino 3.3V/GND (IMPORTANT!)
 ```
 
 ---
@@ -227,11 +215,12 @@ MPU6050 IMU → Arduino 3.3V/GND (IMPORTANT!)
 Digital: D2, D3, D4, D5, D6, D7, D8, D9, D20, D21, D22, D23, D24, D25, D26, D27
 Analog: A0, A1, A2, A6, A7, A8, A9, A10, A11
 ```
+*Servo control uses YFROBOT shield channels (no additional Arduino pins)*
 
 ### Reserved Pins (Serial/I2C)
 ```
 D0, D1 → Serial communication
-D20, D21 → I2C (SDA/SCL) - shared between motor driver and IMU
+D20, D21 → I2C (SDA/SCL) - motor driver communication
 ```
 
 ### Available Pins (16 digital + 7 analog = 23 total)
@@ -251,7 +240,6 @@ Analog: A3, A4, A5, A12, A13, A14, A15
 - [ ] Arduino main power (VIN/GND)
 
 ### Optional Connections
-- [ ] MPU6050 IMU (SDA, SCL, 3.3V, GND) - requires 3.3V power
 - [ ] IR Distance sensors (A0-A5, 5V, GND)
 - [ ] Ultrasonic sensors (D22-D25, 5V, GND)
 - [ ] Line sensors (A6-A8, 5V, GND)
@@ -260,7 +248,7 @@ Analog: A3, A4, A5, A12, A13, A14, A15
 1. Check all encoder connections (8 wires total)
 2. Verify I2C connections (4 wires for shield)
 3. Confirm motor power connections
-4. Test sensor power (3.3V for IMU, 5V for others)
+4. Test sensor power (5V for all sensors)
 5. Verify no pin conflicts
 
 ---
@@ -269,16 +257,12 @@ Analog: A3, A4, A5, A12, A13, A14, A15
 
 ### Common Problems
 - **Motor not moving**: Check encoder connections and I2C wiring
-- **IMU not detected**: Verify 3.3V power and I2C connections
 - **Invalid sensor readings**: Check sensor power and pin assignments
-- **I2C conflicts**: Motor driver and IMU share the same bus
 
 ### Testing Commands
 - `1-4`: Individual motor tests
 - `p`: Status display (includes sensor readings)
-- `i`: IMU status
 - `!`: Detailed sensor readings
-- `k`: IMU calibration retry
 
 ---
 
@@ -316,10 +300,10 @@ Arduino Mega
 └── Power
     ├── VIN: Main power input
     ├── 5V: Sensor power output
-    ├── 3.3V: IMU power output
+    ├── 3.3V: Low voltage output
     └── GND: Common ground
 ```
 
 ---
-*Last updated: November 12, 2025*
+*Last updated: November 13, 2025*
 *Total pins used: 37/69 (54% utilization)*

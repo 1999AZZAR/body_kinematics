@@ -29,7 +29,6 @@ r / R  → Strafe Right   (FR + Back wheels)
 - **Speed**: BASE_SPEED (60 RPM default)
 - **Wheels Used**: Always 2 wheels for optimal efficiency
 - **Direction**: Pure linear movement without rotation
-- **IMU**: Automatic heading correction when enabled
 
 ### Diagonal Movements (2 Wheels Each)
 ```
@@ -166,19 +165,18 @@ h / H  → Continuous Rotation (360° rotation test)
 
 ## Sensor Commands
 
-### IMU (Inertial Measurement Unit) Commands
+### Servo Control Commands
 ```
-ir  → IMU Status         (Display IMU data and status)
-ic  → IMU Calibrate      (Recalibrate gyroscope - keep robot still)
-im  → IMU Toggle Correction (Enable/disable heading correction)
-ih  → IMU Reset Heading  (Set current heading to 0°)
+mu  → Tilt Up             (Set tilt servo to up position)
+md  → Tilt Down           (Set tilt servo to down position)
+mc  → Tilt Center         (Set tilt servo to center position)
+no  → Gripper Open        (Set gripper servo to open position)
+nc  → Gripper Close       (Set gripper servo to closed position)
+nh  → Gripper Half-Open   (Set gripper servo to half-open position)
+ta<angle> → Tilt Angle     (Set tilt servo to specific angle 0-180°)
+ga<angle> → Gripper Angle  (Set gripper servo to specific angle 0-180°)
 ```
 
-**IMU Characteristics:**
-- **Data**: Gyroscope, accelerometer, temperature, heading
-- **Calibration**: Keep robot stationary during calibration
-- **Correction**: PID-based heading correction for straight movement
-- **Integration**: Automatic target heading setting on movement start
 
 ### Sensor Readings Command
 ```
@@ -190,6 +188,15 @@ sr  → Sensor Readings     (Detailed readings from all sensors)
 - **Ultrasonic Sensors**: 2 readings (Front Left/Right) in cm
 - **Line Sensors**: 3 readings (Left/Center/Right) with threshold detection
 - **Validity**: Each sensor shows VALID/INVALID status
+
+### Servo Characteristics:
+- **Tilt Servo**: Channel 8 (SERVO 01), controls vertical tilt (0°=up, 180°=down)
+- **Gripper Servo**: Channel 9 (SERVO 02), controls gripper opening (0°=open, 180°=closed)
+- **Control**: I2C communication through YFROBOT shield microcontroller with 50Hz PWM
+- **Angle Range**: 0-180° for both servos
+- **Initialization**: PWM frequency set to 50Hz during setup for proper servo control
+- **Feedback**: Detailed serial output shows channel numbers and angles
+- **Troubleshooting**: Check channel numbers if servos don't respond (try 0,1,10,11,etc.)
 
 ---
 
@@ -229,15 +236,6 @@ Movement: u, d
 Purpose: Vertical lifting operations
 ```
 
-### IMU Control (4 Commands)
-```
-Status: ir
-Calibration: ic
-Correction: im
-Reset: ih
-Purpose: Heading control and navigation
-```
-
 ### Testing (6 Commands)
 ```
 Motors: 1, 2, 3, 4
@@ -261,8 +259,8 @@ Purpose: Comprehensive sensor data
 Omni Motors Stopped: NO
 Lifter Active: NO
 Lifter Status: Top=OK Bottom=OK Timeout=NO
+Servo Status: Tilt=90° Gripper=90°
 Synchronization: ACTIVE (Motors: 2 3 4 active) | FastMode: OFF | ForceStop: none
-IMU: ENABLED, Heading=45.2°, Target=45.0°, Correction=ON (0.15)
 
 === Sensor Status ===
 IR Distance Sensors (mm):
@@ -279,15 +277,6 @@ Motor 2: Setpoint=60.0 RPM, Smoothed=59.8 RPM, SyncErr=0.2, Output=25.5
 Motor 3: Setpoint=60.0 RPM, Smoothed=60.1 RPM, SyncErr=-0.1, Output=24.8
 Motor 4: Setpoint=60.0 RPM, Smoothed=59.9 RPM, SyncErr=0.1, Output=25.2
 ==================
-```
-
-### IMU Status (`ir`)
-```
-IMU Status: ENABLED
-Heading: 45.23°, Target: 45.00°, Error: 0.23°, Correction: 0.15
-Gyro: X=-0.12°, Y=0.08°, Z=0.05°/s
-Accel: X=0.02m/s², Y=-0.01m/s², Z=9.81m/s²
-Temperature: 28.5°C
 ```
 
 ### Sensor Readings (`sr`)
@@ -333,7 +322,6 @@ Line Sensors (Threshold: 512):
 
 ### State Persistence
 - **Speed Multiplier**: Maintained until changed (5-0 commands)
-- **IMU Correction**: Toggle state maintained (im command)
 - **Fast Mode**: Temporary (rotation) or permanent (o command)
 
 ---
@@ -344,13 +332,6 @@ Line Sensors (Threshold: 512):
 ```
 f + p → Move forward and check status
 f + sr → Move forward with sensor monitoring
-```
-
-### Calibration Sequences
-```
-ic → Calibrate IMU (robot stationary)
-f → Test movement with corrections
-ir → Verify IMU data
 ```
 
 ### Testing Sequences
@@ -383,12 +364,6 @@ Unknown command. Available: f,b,l,r,t,y,c,w,u,d,s,p,1-4(motor test), sr(sensor r
 Command timeout - incomplete command cleared
 ```
 
-### IMU Errors
-```
-IMU Status: DISABLED - MPU6050 not detected
-IMU not initialized - cannot calibrate
-```
-
 ### Sensor Errors
 ```
 [Sensor]: INVALID - Range/Timeout errors displayed
@@ -411,9 +386,11 @@ ser.write(b'f')  # Forward
 time.sleep(2)
 ser.write(b's')  # Stop
 
-# IMU calibration
-ser.write(b'ic')  # Calibrate (keep robot still)
-time.sleep(2)
+# Servo control
+ser.write(b'mc')  # Center tilt servo
+time.sleep(0.5)
+ser.write(b'nc')  # Close gripper
+time.sleep(0.5)
 
 # Sensor monitoring
 ser.write(b'sr')  # Get sensor readings
@@ -483,11 +460,10 @@ def avoid_obstacle():
 | 1 (lifter) | Testing | Lifter Safety Test | Lifter | Variable |
 | g/G | Testing | Figure-8 Pattern | All | Variable |
 | h/H | Testing | Continuous Rotation | All 3 | Variable |
-// IMU commands removed for now
-// | ir | IMU | IMU Status | N/A | N/A |
-// | ic | IMU | IMU Calibrate | N/A | N/A |
-// | im | IMU | IMU Toggle Correction | N/A | N/A |
-// | ih | IMU | IMU Reset Heading | N/A | N/A |
+|| m[u/d/c] | Servo | Tilt Control (Up/Down/Center) | N/A | N/A |
+|| n[o/c/h] | Servo | Gripper Control (Open/Close/Half) | N/A | N/A |
+|| ta<angle> | Servo | Tilt Angle (0-180°) | N/A | N/A |
+|| ga<angle> | Servo | Gripper Angle (0-180°) | N/A | N/A |
 | sr | Sensors | Sensor Readings | N/A | N/A |
 | ls | Lifter | Limit Switch Test | N/A | N/A |
 
@@ -508,7 +484,7 @@ def avoid_obstacle():
 
 ### Diagnostics
 **Status**: `p`
-**IMU**: `ir`, `ic`, `im`, `ih`
+**Servo**: `m`, `n`, `ta`, `ga`
 **Sensors**: `sr`
 **Testing**: `1`, `2`, `3`, `4`, `g`, `h`
 
@@ -540,6 +516,6 @@ a ← l  s/f  r → j
 ```
 
 ---
-*Last updated: November 12, 2025*
-*Total Commands: 33 (25 single + 8 two-character)*
-*Command Structure: Motor (single) | Sensors (two-character)*
+*Last updated: November 13, 2025*
+*Total Commands: 37 (25 single + 12 two-character)*
+*Command Structure: Motor (single) | Sensors/Servo (two-character)*
