@@ -31,9 +31,11 @@ jobs:
         # Install PID_v1 library
         arduino-cli lib install "PID"
 
-        # Install YFROBOT Motor Driver Library
-        # Note: This might need to be installed from GitHub if not in Arduino Library Manager
-        arduino-cli lib install --git-url https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library.git "Yfrobot Motor Driver"
+        # Enable git-url installations for YFROBOT Motor Driver Library
+        arduino-cli config set library.enable_unsafe_install true
+
+        # Install YFROBOT Motor Driver Library from GitHub
+        arduino-cli lib install --git-url https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library.git
 
     - name: Compile Omni Motor Control sketch
       run: |
