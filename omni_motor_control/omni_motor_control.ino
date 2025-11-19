@@ -290,7 +290,7 @@ void loop() {
   // Update virtual force field for potential field method
   updateVirtualForceField();
 
-  // Check for serial commands - read complete lines terminated by newline
+  // Check for serial commands from Pi - read complete lines terminated by newline
   static String commandBuffer = "";
 
   while (Serial.available()) {
@@ -301,7 +301,7 @@ void loop() {
       if (commandBuffer.length() > 0) {
         commandBuffer.trim(); // Remove any trailing whitespace
         if (commandBuffer.length() > 0) {
-          executeCommand(commandBuffer);
+          executePiCommand(commandBuffer);
         }
         commandBuffer = "";
       }
@@ -942,7 +942,99 @@ void liftDown() {
   lifterMovementStartTime = millis();
 }
 
-// Execute commands from serial
+// Execute Pi commands from Raspberry Pi
+void executePiCommand(String command) {
+  // Handle single-character commands from Pi
+  if (command.length() == 1) {
+    char cmd = command.charAt(0);
+    switch (cmd) {
+      case 'f': moveForward(); break;
+      case 'b': moveBackward(); break;
+      case 'l': moveLeft(); break;
+      case 'r': moveRight(); break;
+      case 'q': moveForwardLeft(); break;
+      case 'e': moveForwardRight(); break;
+      case 'z': moveBackwardLeft(); break;
+      case 'x': moveBackwardRight(); break;
+      case 'c': rotateCW(); break;
+      case 'w': rotateCCW(); break;
+      case 't': turnLeft(); break;
+      case 'y': turnRight(); break;
+      case 'a': arcLeft(); break;
+      case 'j': arcRight(); break;
+      case 's': stopMotors(); break;
+      case 'u': liftUp(); break;
+      case 'd': liftDown(); break;
+      case 'p': printStatus(); break;
+      case 'g': calibrateEncoders(); break;
+      case 'h': figureEight(); break;
+      case 'o': toggleFastRotation(); break;
+      case 'v': emergencyStop(); break;
+      case '1': case '2': case '3': case '4':
+        testMotor(cmd - '0');
+        break;
+      case '5': case '6': case '7': case '8': case '9': case '0':
+        setSpeedMultiplier(cmd);
+        break;
+      default:
+        Serial.println("UNKNOWN_CMD");
+        break;
+    }
+  } else if (command.startsWith("sr")) {
+    // Sensor readings request from Pi
+    transmitSensorData();
+  } else if (command.startsWith("ta")) {
+    // Tilt angle command: ta90
+    String angleStr = command.substring(2);
+    int angle = angleStr.toInt();
+    if (angle >= 0 && angle <= 180) {
+      setTiltAngle(angle);
+      Serial.print("TILT:");
+      Serial.println(angle);
+    } else {
+      Serial.println("INVALID_TILT_ANGLE");
+    }
+  } else if (command.startsWith("ga")) {
+    // Gripper angle command: ga45
+    String angleStr = command.substring(2);
+    int angle = angleStr.toInt();
+    if (angle >= 0 && angle <= 180) {
+      setGripperAngle(angle);
+      Serial.print("GRIP:");
+      Serial.println(angle);
+    } else {
+      Serial.println("INVALID_GRIPPER_ANGLE");
+    }
+  } else if (command.startsWith("no")) {
+    // Gripper open
+    openGripper();
+    Serial.println("GRIPPER_OPEN");
+  } else if (command.startsWith("nc")) {
+    // Gripper close
+    closeGripper();
+    Serial.println("GRIPPER_CLOSE");
+  } else if (command.startsWith("nh")) {
+    // Gripper half open
+    halfOpenGripper();
+    Serial.println("GRIPPER_HALF");
+  } else if (command.startsWith("mu")) {
+    // Tilt up
+    tiltUp();
+    Serial.println("TILT_UP");
+  } else if (command.startsWith("md")) {
+    // Tilt down
+    tiltDown();
+    Serial.println("TILT_DOWN");
+  } else if (command.startsWith("mc")) {
+    // Center tilt
+    centerTilt();
+    Serial.println("TILT_CENTER");
+  } else {
+    Serial.println("UNKNOWN_CMD");
+  }
+}
+
+// Execute commands from serial (terminal input)
 void executeCommand(String command) {
 
   // Handle servo angle commands (ta<angle>, ga<angle>)
@@ -1253,6 +1345,69 @@ void centerTilt() {
 // Half-open gripper (set to default position)
 void halfOpenGripper() {
   setGripperAngle(GRIPPER_SERVO_DEFAULT);
+}
+
+// Emergency stop function
+void emergencyStop() {
+  Serial.println("EMERGENCY STOP ACTIVATED");
+  motorDriver.stopMotor(MAll);
+  motorsStopped = true;
+  lifterActive = false;
+  fastRotationMode = false;
+  // Reset all setpoints
+  for (int i = 0; i < 4; i++) {
+    setpoint[i] = 0;
+    motorIntendedActive[i] = false;
+  }
+}
+
+// Toggle fast rotation mode
+void toggleFastRotation() {
+  if (fastRotationMode) {
+    fastRotationMode = false;
+    Serial.println("TURBO:0");
+  } else {
+    fastRotationMode = true;
+    lastRotationCommand = millis();
+    Serial.println("TURBO:1");
+  }
+}
+
+// Set speed multiplier
+void setSpeedMultiplier(char speedCmd) {
+  switch (speedCmd) {
+    case '0': speedMultiplier = 1.0; Serial.println("SPD:100"); break;
+    case '5': speedMultiplier = 0.5; Serial.println("SPD:50"); break;
+    case '6': speedMultiplier = 0.6; Serial.println("SPD:60"); break;
+    case '7': speedMultiplier = 0.7; Serial.println("SPD:70"); break;
+    case '8': speedMultiplier = 0.8; Serial.println("SPD:80"); break;
+    case '9': speedMultiplier = 0.9; Serial.println("SPD:90"); break;
+  }
+}
+
+// Transmit sensor data to Pi
+void transmitSensorData() {
+  Serial.print("SENSORS:");
+  // IR sensors
+  Serial.print("IR_LF:"); Serial.print(irLeft1.valid ? String(irLeft1.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("IR_LB:"); Serial.print(irLeft2.valid ? String(irLeft2.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("IR_RF:"); Serial.print(irRight1.valid ? String(irRight1.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("IR_RB:"); Serial.print(irRight2.valid ? String(irRight2.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("IR_BL:"); Serial.print(irBack1.valid ? String(irBack1.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("IR_BR:"); Serial.print(irBack2.valid ? String(irBack2.distance, 1) : "INV"); Serial.print(",");
+  // Ultrasonic sensors
+  Serial.print("US_FL:"); Serial.print(ultrasonicFrontLeft.valid ? String(ultrasonicFrontLeft.distance, 1) : "INV"); Serial.print(",");
+  Serial.print("US_FR:"); Serial.print(ultrasonicFrontRight.valid ? String(ultrasonicFrontRight.distance, 1) : "INV"); Serial.print(",");
+  // Motor data
+  Serial.print("MTR1_RPM:"); Serial.print(smoothedRPM[0], 1); Serial.print(",");
+  Serial.print("MTR2_RPM:"); Serial.print(smoothedRPM[1], 1); Serial.print(",");
+  Serial.print("MTR3_RPM:"); Serial.print(smoothedRPM[2], 1); Serial.print(",");
+  Serial.print("MTR4_RPM:"); Serial.print(smoothedRPM[3], 1); Serial.print(",");
+  // Status
+  Serial.print("SYNC:"); Serial.print(synchronizationActive ? "1" : "0"); Serial.print(",");
+  Serial.print("VFF:"); Serial.print(perimeterSafetyEnabled ? "1" : "0"); Serial.print(",");
+  Serial.print("MOVING:"); Serial.print((!motorsStopped || lifterActive) ? "1" : "0");
+  Serial.println();
 }
 
 // =============== SENSOR FUNCTIONS ===============
