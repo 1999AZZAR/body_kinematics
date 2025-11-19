@@ -40,8 +40,17 @@ jobs:
         cd ~/.arduino15/libraries
         wget -q -O yfrobot-lib.zip https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library/archive/master.zip
         unzip -q yfrobot-lib.zip
-        mv Yfrobot-Motor-Driver-Library-master Yfrobot_Motor_Driver_Library
-        rm yfrobot-lib.zip
+
+        # Create the library directory and copy files from src/
+        mkdir -p Yfrobot_Motor_Driver_Library
+        cp -r Yfrobot-Motor-Driver-Library-master/src/* Yfrobot_Motor_Driver_Library/
+        cp Yfrobot-Motor-Driver-Library-master/*.txt Yfrobot_Motor_Driver_Library/ 2>/dev/null || true
+        cp Yfrobot-Motor-Driver-Library-master/*.md Yfrobot_Motor_Driver_Library/ 2>/dev/null || true
+        cp Yfrobot-Motor-Driver-Library-master/*.properties Yfrobot_Motor_Driver_Library/ 2>/dev/null || true
+        cp Yfrobot-Motor-Driver-Library-master/*.json Yfrobot_Motor_Driver_Library/ 2>/dev/null || true
+
+        # Clean up
+        rm -rf Yfrobot-Motor-Driver-Library-master yfrobot-lib.zip
 
     - name: Compile Omni Motor Control sketch
       run: |
