@@ -33,11 +33,11 @@ jobs:
 
     - name: Install YFROBOT Motor Driver Library
       run: |
-        # Create Arduino libraries directory if it doesn't exist
-        mkdir -p ~/.arduino15/libraries
+        # Create Arduino user libraries directory if it doesn't exist
+        mkdir -p ~/Arduino/libraries
 
         # Download and install YFROBOT Motor Driver Library manually
-        cd ~/.arduino15/libraries
+        cd ~/Arduino/libraries
         wget -q -O yfrobot-lib.zip https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library/archive/master.zip
         unzip -q yfrobot-lib.zip
 
