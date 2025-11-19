@@ -1,0 +1,54 @@
+name: Arduino CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Arduino CLI
+      uses: arduino/setup-arduino-cli@v1
+
+    - name: Update Arduino CLI
+      run: |
+        arduino-cli core update-index
+
+    - name: Install Arduino Mega core
+      run: |
+        arduino-cli core install arduino:megaavr
+        arduino-cli core install arduino:avr
+
+    - name: Install required libraries
+      run: |
+        # Install PID_v1 library
+        arduino-cli lib install "PID"
+
+        # Install YFROBOT Motor Driver Library
+        # Note: This might need to be installed from GitHub if not in Arduino Library Manager
+        arduino-cli lib install --git-url https://github.com/YFROBOT-TM/Yfrobot-Motor-Driver-Library.git "Yfrobot Motor Driver"
+
+    - name: Compile Omni Motor Control sketch
+      run: |
+        cd omni_motor_control
+        arduino-cli compile --fqbn arduino:avr:mega omni_motor_control.ino
+
+    - name: Compile I2C Scanner sketch
+      run: |
+        cd i2c_scanner
+        arduino-cli compile --fqbn arduino:avr:mega i2c_scanner.ino
+
+    - name: Verify compilation success
+      run: |
+        echo "✅ All Arduino sketches compiled successfully!"
+        echo "📋 Build Summary:"
+        echo "  - Omni Motor Control: ✅ Compiled"
+        echo "  - I2C Scanner: ✅ Compiled"
+        echo "  - Target Board: Arduino Mega (ATmega2560)"
