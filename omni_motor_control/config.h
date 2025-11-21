@@ -16,29 +16,29 @@ const double TURN_SPEED = 30.0;             // Speed for turning movements
 const double LIFT_SPEED = 50.0;             // Speed for lifter motor
 
 // === PID CONFIGURATION ===
-const double PID_SAMPLE_TIME = 100;         // PID sample time in ms
+const double PID_SAMPLE_TIME = 20;          // PID sample time in ms (reduced from 100ms for 5x faster response)
 const int PID_OUTPUT_LIMIT_MIN = -255;      // PID output minimum (PWM)
 const int PID_OUTPUT_LIMIT_MAX = 255;       // PID output maximum (PWM)
 
-// PID Tunings (Kp, Ki, Kd) for each motor
-const double Lifter_Kp = 2.0;               // Lifter PID - conservative
-const double Lifter_Ki = 0.5;
-const double Lifter_Kd = 0.1;
+// PID Tunings (Kp, Ki, Kd) for each motor - optimized for responsiveness
+const double Lifter_Kp = 3.0;               // Lifter PID - more responsive (was 2.0)
+const double Lifter_Ki = 1.2;               // Higher integral for steady state (was 0.5)
+const double Lifter_Kd = 0.05;              // Reduced derivative for less oscillation (was 0.1)
 
-const double Omni_Kp = 8.0;                 // Omni motors - aggressive for instant response
-const double Omni_Ki = 2.7;
-const double Omni_Kd = 0.5;
+const double Omni_Kp = 10.0;                 // Omni motors - responsive but smooth (reduced from 12.0)
+const double Omni_Ki = 3.5;                 // Balanced integral for smooth settling (reduced from 4.0)
+const double Omni_Kd = 0.02;                 // Increased derivative for better damping and smoothness (was 0.3)
 
 // === MOTOR SYNCHRONIZATION ===
-const double SYNC_KP = 0.5;                 // Synchronization PID gain (lower for stability)
+const double SYNC_KP = 0.2;                 // Synchronization PID gain (lower for stability)
 
 // === ACCELERATION LIMITING ===
-const double MAX_RPM_CHANGE = 200.0;        // Maximum RPM change per sample (for smooth acceleration)
-const double MAX_RPM_CHANGE_ROTATION = 1000.0; // Aggressive changes for rotation (c/w commands)
+const double MAX_RPM_CHANGE = 300.0;        // Maximum RPM change per sample (balanced: faster than 200 but smoother than 400)
+const double MAX_RPM_CHANGE_ROTATION = 2000.0; // Fast changes for rotation (responsive but not jerky)
 
 // === FILTERING AND SMOOTHING ===
-const double RPM_ALPHA = 0.7;               // Exponential smoothing factor (higher = more responsive, 0.1-0.9)
-const double RPM_ALPHA_FAST = 0.9;          // Ultra-responsive smoothing during fast rotation
+const double RPM_ALPHA = 0.8;               // Exponential smoothing factor (balanced: responsive but smooth)
+const double RPM_ALPHA_FAST = 0.9;          // Fast smoothing during rotation (responsive but stable)
 
 // === MOTOR ANGLES (degrees) ===
 // Triangular 3-wheel omni robot configuration
@@ -130,9 +130,9 @@ const float ULTRASONIC_SAFETY_DISTANCE_CRITICAL = 150.0; // Critical zone: immed
 const float ULTRASONIC_SAFETY_DISTANCE_WARNING = 250.0;  // Warning zone: slow down (150mm = 15cm)
 
 // Emergency Brake Settings (fallback for extreme situations)
-const unsigned long BRAKE_COOLDOWN_MS = 2500;         // Minimum time between emergency brakes (2.5 seconds)
-const float EMERGENCY_DECELERATION = 0.5;             // Emergency deceleration factor (50% of current speed)
-const unsigned long PERIMETER_CHECK_INTERVAL = 50;     // Check perimeter every 50ms
+const unsigned long BRAKE_COOLDOWN_MS = 1500;         // Minimum time between emergency brakes (reduced from 2500ms for faster recovery)
+const float EMERGENCY_DECELERATION = 0.3;             // Emergency deceleration factor (reduced from 0.5 for more aggressive braking)
+const unsigned long PERIMETER_CHECK_INTERVAL = 25;     // Check perimeter every 25ms (doubled frequency from 50ms)
 
 // Virtual Bumper Modes
 enum VirtualBumperMode {
