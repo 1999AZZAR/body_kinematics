@@ -133,6 +133,22 @@ See `LOGGING_CODES.md` for complete documentation of all compact codes used by t
 
 ---
 
+## Safety & System Control Commands
+
+### Perimeter Safety System
+```
+se → Enable Perimeter Safety     (Virtual Bumper Enabled)
+sd → Disable Perimeter Safety    (Virtual Bumper Disabled)
+```
+
+**Safety Characteristics:**
+- **Virtual Bumper**: Artificial potential field obstacle avoidance
+- **Force Field**: Repulsive forces from IR and ultrasonic sensors
+- **Auto-Brake**: Automatic emergency stop when obstacles detected
+- **Default State**: Enabled on startup for maximum safety
+
+---
+
 ## Testing & Diagnostic Commands
 
 ### Individual Motor Tests
@@ -466,6 +482,24 @@ def avoid_obstacle():
 || ga<angle> | Servo | Gripper Angle (0-180°) | N/A | N/A |
 | sr | Sensors | Sensor Readings | N/A | N/A |
 | ls | Lifter | Limit Switch Test | N/A | N/A |
+| se | Safety | Enable Perimeter Safety | N/A | N/A |
+| sd | Safety | Disable Perimeter Safety | N/A | N/A |
+
+---
+
+## ⚠️ **Known Issues & Missing Commands**
+
+### Commands Listed in Help But Not Implemented
+The firmware help text incorrectly lists these commands as available, but they are **NOT implemented**:
+
+```
+ir → (Not Implemented) - Listed but no functionality
+ic → (Not Implemented) - Listed but no functionality
+im → (Not Implemented) - Listed but no functionality
+ih → (Not Implemented) - Listed but no functionality
+```
+
+**Note**: These commands appear in the startup help message but will return "Unknown command" if used.
 
 ---
 
