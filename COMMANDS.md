@@ -544,12 +544,30 @@ a ← l  s/f  r → j
 5=50%  6=60%  7=70%  8=80%  9=90%  0=100%
 ```
 
+### Sensor Publishing Control
+```
+spe = Enable sensor publishing (IR, ultrasonic data)
+spd = Disable sensor publishing
+```
+
+### Individual Wheel Control
+```
+w[0-3][-100-100] = Set individual wheel speed (-100 to 100 = -100% to 100%)
+w0-100 = Lifter motor full speed forward
+w150 = Front Right motor 50% forward
+w2-75 = Front Left motor 75% reverse
+wstop = Stop all individual wheel control
+```
+
 ### Testing Sequence
 ```
 1 → 2 → 3 → 4 → g → h → p
 ```
 
 ---
-*Last updated: November 13, 2025*
-*Total Commands: 37 (25 single + 12 two-character)*
-*Command Structure: Motor (single) | Sensors/Servo (two-character)*
+*Last updated: November 22, 2025*
+*Total Commands: 42 (25 single + 17 two-character)*
+*Command Structure: Motor (single) | Sensors/Servo (two-character) | Publishing (two-character) | Wheels (w+)*
+*Sensor Publishing: DIST:values, US:values (100ms intervals)*
+*Individual Wheel Control: w[wheel][speed] for precise motor control*
+*Note: IMU (MPU6050) is on Raspberry Pi, not Arduino Mega*

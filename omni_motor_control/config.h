@@ -143,4 +143,5 @@ enum VirtualBumperMode {
 
 const VirtualBumperMode CURRENT_BUMPER_MODE = POTENTIAL_FIELD; // Set desired mode
 
+
 #endif // CONFIG_H

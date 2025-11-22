@@ -122,7 +122,9 @@ int currentGripperAngle = GRIPPER_SERVO_DEFAULT;
 
 // === PERIMETER SAFETY SYSTEM VARIABLES ===
 unsigned long lastPerimeterCheck = 0;
-bool perimeterSafetyEnabled = true;  // Master enable/disable for perimeter safety
+bool perimeterSafetyEnabled = true;
+bool sensorPublishingEnabled = true;  // Enable sensor data publishing by default
+bool individualWheelControlEnabled = false;  // Individual wheel control mode  // Master enable/disable for perimeter safety
 
 enum SafetyLevel {
   SAFE,
@@ -271,6 +273,8 @@ void setup() {
   Serial.println("🎯 Omni motors: Smooth movement, Lifter: Responsive control");
   Serial.println("Cmd: f,b,l,r,t,y,c,w,q,e,z,x,a,j,s,p,o,1-4,g,h,u,d,5-9,0,m,n,sr,se,sd,ls,v");
   Serial.println("Servo: m[u/d/c](tilt), n[o/c/h](gripper), ta<0-180>, ga<0-180>");
+  Serial.println("Sensors: sp[e/d] (sensor publish enable/disable)");
+  Serial.println("Wheels: w[0-3][-100-100] (individual wheel control), wstop (stop all)");
 }
 
 void loop() {
@@ -289,6 +293,9 @@ void loop() {
 
   // Update virtual force field for potential field method
   updateVirtualForceField();
+
+  // Publish sensor data for ROS2 integration
+  publishSensorData();
 
   // Optimized serial command processing - ultra-responsive
   static String commandBuffer = "";
@@ -311,8 +318,8 @@ void loop() {
     } else if (incomingChar != ' ' && incomingChar != '\t') {
       // Add character to buffer (no length limit for responsiveness)
       if (commandBuffer.length() < 20) {  // Prevent buffer overflow
-        commandBuffer += incomingChar;
-      }
+      commandBuffer += incomingChar;
+    }
     }
   }
 
@@ -424,7 +431,7 @@ double applyAccelerationLimiting(int motorIndex, double targetRPM) {
     maxChange *= 1.2;
   } else if (isRotation) {
     // Omni motors in rotation: moderate speed for smoothness
-    maxChange = maxRPMChangeRotation * 0.8;  // 80% of max for smoother rotation
+    maxChange = maxRPMChangeRotation * 0.9;  // 90% of max for smoother rotation
   } else if (abs(targetRPM - lastRPM[motorIndex]) > 30) {
     // Large speed changes: moderate acceleration for smoothness
     maxChange *= 1.2;  // 20% faster for big changes (reduced from 50%)
@@ -1114,6 +1121,47 @@ void executeCommand(String command) {
     Serial.print(",");
     Serial.println(bottomRaw);
     return;
+  } else if (command == "spe") {
+    // Enable sensor publishing
+    sensorPublishingEnabled = true;
+    Serial.println("SPE:1"); // Sensor Publishing Enabled
+    return;
+  } else if (command == "spd") {
+    // Disable sensor publishing
+    sensorPublishingEnabled = false;
+    Serial.println("SPD:0"); // Sensor Publishing Disabled
+    return;
+  } else if (command.startsWith("w") && command.length() >= 3) {
+    // Individual wheel control: w[wheel][speed]
+    // wheel: 0=Lifter, 1=FR, 2=FL, 3=Back
+    // speed: -100 to 100 (maps to -1.0 to 1.0)
+    char wheelChar = command.charAt(1);
+    int wheelIndex = wheelChar - '0';
+
+    if (wheelIndex >= 0 && wheelIndex <= 3) {
+      String speedStr = command.substring(2);
+      int speedInt = speedStr.toInt();
+
+      // Constrain speed to -100 to 100
+      speedInt = constrain(speedInt, -100, 100);
+
+      // Convert to -1.0 to 1.0 range
+      double speed = speedInt / 100.0;
+
+      setWheelSpeed(wheelIndex, speed);
+      Serial.print("WSET:");
+      Serial.print(wheelIndex);
+      Serial.print(",");
+      Serial.println(speed);
+    } else {
+      Serial.println("ERROR: Invalid wheel index (0-3)");
+    }
+    return;
+  } else if (command == "wstop") {
+    // Stop all individual wheel control
+    stopAllWheels();
+    Serial.println("WSTOP: All wheels stopped");
+    return;
   }
 
   // Handle single-character motor commands
@@ -1385,11 +1433,56 @@ void emergencyStop() {
   motorsStopped = true;
   lifterActive = false;
   fastRotationMode = false;
+  individualWheelControlEnabled = false;
   // Reset all setpoints
   for (int i = 0; i < 4; i++) {
     setpoint[i] = 0;
     motorIntendedActive[i] = false;
   }
+}
+
+// Individual Wheel Control Functions
+void setWheelSpeed(int wheelIndex, double speed) {
+  // wheelIndex: 0=Lifter, 1=FR, 2=FL, 3=Back
+  // speed: -1.0 to +1.0 (negative = reverse, positive = forward)
+
+  if (wheelIndex < 0 || wheelIndex > 3) {
+    Serial.println("ERROR: Invalid wheel index");
+    return;
+  }
+
+  // Enable individual wheel control mode
+  individualWheelControlEnabled = true;
+  motorsStopped = false;
+
+  // Convert speed (-1.0 to 1.0) to RPM setpoint
+  double rpm = speed * MAX_RPM * speedMultiplier;
+
+  // Set the setpoint for the specific wheel
+  setpoint[wheelIndex] = rpm;
+  prev_setpoint[wheelIndex] = rpm;
+
+  // Set intended active flag for this wheel
+  motorIntendedActive[wheelIndex] = (abs(speed) > 0.01);
+
+  Serial.print("Wheel ");
+  Serial.print(wheelIndex);
+  Serial.print(" set to ");
+  Serial.println(speed);
+}
+
+void stopAllWheels() {
+  Serial.println("Stopping all wheels individually");
+  motorsStopped = true;
+  lifterActive = false;
+  individualWheelControlEnabled = false;
+
+  for (int i = 0; i < 4; i++) {
+    setpoint[i] = 0;
+    motorIntendedActive[i] = false;
+  }
+
+  motorDriver.stopMotor(MAll);
 }
 
 // Toggle fast rotation mode - ULTRA RESPONSIVE
@@ -1518,6 +1611,43 @@ void updateAllSensors() {
     lastSensorUpdate = millis();
   }
 }
+
+// // IMU Functions
+
+
+// ROS2-style Publishing Functions
+void publishSensorData() {
+  static unsigned long lastPublishTime = 0;
+
+  if (sensorPublishingEnabled && millis() - lastPublishTime >= 100) {  // Publish every 100ms if enabled
+    // Publish IR distance sensors
+    publishIRDistanceData();
+
+    // Publish ultrasonic sensors
+    publishUltrasonicData();
+
+    lastPublishTime = millis();
+  }
+}
+
+void publishIRDistanceData() {
+  // Format: DIST:left_front:value,left_back:value,right_front:value,right_back:value,back_left:value,back_right:value
+  Serial.print("DIST:");
+  Serial.print(irLeft1.distance); Serial.print(",");
+  Serial.print(irLeft2.distance); Serial.print(",");
+  Serial.print(irRight1.distance); Serial.print(",");
+  Serial.print(irRight2.distance); Serial.print(",");
+  Serial.print(irBack1.distance); Serial.print(",");
+  Serial.println(irBack2.distance);
+}
+
+void publishUltrasonicData() {
+  // Format: US:front_left:value,front_right:value
+  Serial.print("US:");
+  Serial.print(ultrasonicFrontLeft.distance); Serial.print(",");
+  Serial.println(ultrasonicFrontRight.distance);
+}
+
 
 // Update lifter limit switch states
 void updateLifterLimitSwitches() {
