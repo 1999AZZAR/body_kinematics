@@ -198,6 +198,10 @@ VirtualBumperStatus virtualBumperStatus = {
 };
 unsigned long lastAutoBrake = 0;
 MovementDirection currentMovementDirection = STOPPED;
+MovementDirection previousMovementDirection = STOPPED;
+unsigned long lastDirectionChange = 0;
+const unsigned long DIRECTION_CHANGE_TIMEOUT = 800; // 800ms of fast response after direction change
+const unsigned long DIRECTION_CHANGE_BUFFER = 150;  // 150ms buffer to prevent command spam
 
 void setup() {
   Serial.begin(115200);
@@ -268,9 +272,10 @@ void setup() {
 
   Serial.println("Sensors initialized.");
 
-  Serial.println("🚀 RESPONSIVE & SMOOTH MODE ACTIVATED!");
-  Serial.println("⚡ Fast PID (20ms), smooth acceleration, instant commands");
-  Serial.println("🎯 Omni motors: Smooth movement, Lifter: Responsive control");
+  Serial.println("🚀 HIGH-POWER SMOOTH DIRECTION MODE ACTIVATED!");
+  Serial.println("⚡ Turbo PID (10ms), adaptive acceleration, maximum torque");
+  Serial.println("💪 8x motor power, 3x speed limits, intelligent direction smoothing");
+  Serial.println("🎯 Omni motors: Smooth direction changes, Lifter: Ultimate power");
   Serial.println("Cmd: f,b,l,r,t,y,c,w,q,e,z,x,a,j,s,p,o,1-4,g,h,u,d,5-9,0,m,n,sr,se,sd,ls,v");
   Serial.println("Servo: m[u/d/c](tilt), n[o/c/h](gripper), ta<0-180>, ga<0-180>");
   Serial.println("Sensors: sp[e/d] (sensor publish enable/disable)");
@@ -278,7 +283,7 @@ void setup() {
 }
 
 void loop() {
-  // Update motor control every PID sample time (now 20ms instead of 100ms)
+  // Update motor control every PID sample time (now 10ms for ultra-fast response)
   static unsigned long lastUpdate = 0;
   if (millis() - lastUpdate >= PID_SAMPLE_TIME) {
     updateMotorControl();
@@ -423,18 +428,22 @@ double applyAccelerationLimiting(int motorIndex, double targetRPM) {
     return targetRPM;
   }
 
-  // Balanced acceleration: smooth for omni motors, responsive for lifter
+  // Adaptive acceleration based on movement context
   double maxChange = maxRPMChange;  // Start with base acceleration
+  bool isDirectionChange = (millis() - lastDirectionChange) < DIRECTION_CHANGE_TIMEOUT;
 
   if (motorIndex == 0) {
     // Lifter motor: allow faster changes for responsiveness
-    maxChange *= 1.2;
+    maxChange *= 2.0;  // Doubled for lifter
+  } else if (isDirectionChange) {
+    // Direction change: very fast response for smooth transitions
+    maxChange *= 3.0;  // Triple acceleration during direction changes
   } else if (isRotation) {
     // Omni motors in rotation: moderate speed for smoothness
-    maxChange = maxRPMChangeRotation * 0.9;  // 90% of max for smoother rotation
-  } else if (abs(targetRPM - lastRPM[motorIndex]) > 30) {
-    // Large speed changes: moderate acceleration for smoothness
-    maxChange *= 1.2;  // 20% faster for big changes (reduced from 50%)
+    maxChange = maxRPMChangeRotation;  // Full rotation speed
+  } else {
+    // Omni motors in translation: responsive but stable
+    maxChange *= 1.5;  // 50% faster for omni motors
   }
 
   // Limit rate of RPM change for smooth acceleration/deceleration
@@ -523,9 +532,11 @@ void updateMotorControl() {
     lastEncoderTime[i] = currentTime;
   }
 
-  if (!fastRotationMode) {
-    updateMotorSynchronization();
-  }
+  // DISABLED: Motor synchronization causing sluggishness
+  // if (!fastRotationMode) {
+  //   updateMotorSynchronization();
+  // }
+  synchronizationActive = false;  // Ensure sync is disabled
 
   if (lifterActive) {
     // Continuous limit switch safety check
@@ -574,7 +585,28 @@ void updateMotorControl() {
   }
 }
 
+// Clear all previous motor commands to ensure correct motor rotation
+void clearMotorCommands() {
+  // Stop all motors immediately to clear any previous PWM commands
+  motorDriver.stopMotor(MAll);
+
+  // Small delay to ensure motor driver processes the stop command
+  delayMicroseconds(100);
+
+  // Reset motor driver PWM channels to ensure clean state
+  // This prevents residual PWM signals from previous commands
+  for (int i = 1; i <= 4; i++) {
+    motorDriver.setSingleMotor(i, 0);
+  }
+
+  // Additional delay to ensure PWM channels are cleared
+  delayMicroseconds(50);
+}
+
 void setOmniSpeeds(double vx, double vy, double omega) {
+  // Clear any previous motor commands before setting new speeds
+  clearMotorCommands();
+
   motorsStopped = false;
   lifterActive = false;
 
@@ -607,6 +639,18 @@ void setOmniSpeeds(double vx, double vy, double omega) {
     currentMovementDirection = RIGHT;
   } else {
     currentMovementDirection = STOPPED;
+  }
+
+  // Detect direction changes for smoother transitions
+  if (currentMovementDirection != previousMovementDirection && currentMovementDirection != STOPPED) {
+    // Only allow direction change if enough time has passed since last change
+    if (millis() - lastDirectionChange > DIRECTION_CHANGE_BUFFER) {
+      lastDirectionChange = millis();
+      previousMovementDirection = currentMovementDirection;
+    } else {
+      // Revert to previous direction to prevent jerky transitions
+      currentMovementDirection = previousMovementDirection;
+    }
   }
 
   // Apply virtual force field to modify desired velocities for obstacle avoidance
@@ -652,7 +696,8 @@ void setOmniSpeeds(double vx, double vy, double omega) {
     target_rpm = constrain(target_rpm, -MAX_RPM, MAX_RPM);
 
     motorIntendedActive[i] = (abs(normalized_speed) > 0.01);
-    target_rpm = applySynchronizationCorrection(i, target_rpm);
+    // DISABLED: Synchronization correction causing sluggishness
+    // target_rpm = applySynchronizationCorrection(i, target_rpm);
     target_rpm = applyAccelerationLimiting(i, target_rpm);
 
     setpoint[i] = target_rpm;
@@ -663,6 +708,7 @@ void setOmniSpeeds(double vx, double vy, double omega) {
 // Movement functions
 void moveForward() {
   Serial.println("Moving Forward (Motor 2 backward + Motor 3 forward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -686,6 +732,7 @@ void moveForward() {
 
 void moveBackward() {
   Serial.println("Moving Backward (Motor 2 forward + Motor 3 backward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -709,6 +756,7 @@ void moveBackward() {
 
 void moveLeft() {
   Serial.println("Moving Left (FR backward + Back forward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -732,6 +780,7 @@ void moveLeft() {
 
 void moveRight() {
   Serial.println("Moving Right (FR forward + Back backward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -756,6 +805,7 @@ void moveRight() {
 // Diagonal movement functions - REFINED: specific wheel combinations
 void moveForwardLeft() {
   Serial.println("Moving Forward-Left (FL forward + Back forward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -779,6 +829,7 @@ void moveForwardLeft() {
 
 void moveForwardRight() {
   Serial.println("Moving Forward-Right (FR forward + Back backward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -802,6 +853,7 @@ void moveForwardRight() {
 
 void moveBackwardLeft() {
   Serial.println("Moving Backward-Left (FL backward + Back backward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -825,6 +877,7 @@ void moveBackwardLeft() {
 
 void moveBackwardRight() {
   Serial.println("Moving Backward-Right (FR backward + Back forward)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   motorsStopped = false;
   lifterActive = false;
 
@@ -874,6 +927,7 @@ void turnRight() {
 
 void rotateCW() {
   Serial.println("Rotating Clockwise (TURBO MODE - MAXIMUM RESPONSE)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   lastRotationCommand = millis();
   fastRotationMode = true;
 
@@ -894,6 +948,7 @@ void rotateCW() {
 
 void rotateCCW() {
   Serial.println("Rotating Counter-Clockwise (TURBO MODE - MAXIMUM RESPONSE)");
+  clearMotorCommands();  // Clear previous commands for correct motor rotation
   lastRotationCommand = millis();
   fastRotationMode = true;
 
@@ -952,6 +1007,7 @@ void liftUp() {
   }
 
   Serial.println("LFT:U");
+  clearMotorCommands();  // Clear previous commands for correct lifter operation
   lifterActive = true;
   motorsStopped = true;
   setpoint[0] = -LIFT_SPEED;
@@ -965,6 +1021,7 @@ void liftDown() {
   }
 
   Serial.println("LFT:D");
+  clearMotorCommands();  // Clear previous commands for correct lifter operation
   lifterActive = true;
   motorsStopped = true;
   setpoint[0] = LIFT_SPEED;
@@ -985,6 +1042,34 @@ void executePiCommand(String command) {
     char cmd = command.charAt(0);
 
     // Movement commands - high priority
+    // Check for direction change spam prevention
+    static MovementDirection lastCommandDirection = STOPPED;
+    MovementDirection newDirection = STOPPED;
+
+    // Map command to direction for spam prevention
+    switch (cmd) {
+      case 'f': newDirection = FORWARD; break;
+      case 'b': newDirection = BACKWARD; break;
+      case 'l': newDirection = LEFT; break;
+      case 'r': newDirection = RIGHT; break;
+      case 'q': newDirection = FORWARD_LEFT; break;
+      case 'e': newDirection = FORWARD_RIGHT; break;
+      case 'z': newDirection = BACKWARD_LEFT; break;
+      case 'x': newDirection = BACKWARD_RIGHT; break;
+      case 'c': newDirection = ROTATE_CW; break;
+      case 'w': newDirection = ROTATE_CCW; break;
+      case 't': case 'y': case 'a': case 'j': newDirection = COMPLEX; break;
+    }
+
+    // Prevent direction change spam
+    if (newDirection != STOPPED && newDirection != lastCommandDirection) {
+      if (millis() - lastDirectionChange < DIRECTION_CHANGE_BUFFER) {
+        Serial.println("DIR_CHANGE_TOO_FAST"); // Debug message
+        return; // Ignore rapid direction changes
+      }
+      lastCommandDirection = newDirection;
+    }
+
     switch (cmd) {
       case 'f': moveForward(); return;      // Immediate return for responsiveness
       case 'b': moveBackward(); return;
@@ -1451,6 +1536,9 @@ void setWheelSpeed(int wheelIndex, double speed) {
     return;
   }
 
+  // Clear previous commands before setting new wheel speed for correct rotation
+  clearMotorCommands();
+
   // Enable individual wheel control mode
   individualWheelControlEnabled = true;
   motorsStopped = false;
@@ -1473,6 +1561,7 @@ void setWheelSpeed(int wheelIndex, double speed) {
 
 void stopAllWheels() {
   Serial.println("Stopping all wheels individually");
+  clearMotorCommands();  // Clear all commands for clean stop
   motorsStopped = true;
   lifterActive = false;
   individualWheelControlEnabled = false;
@@ -1503,11 +1592,11 @@ void toggleFastRotation() {
 void setSpeedMultiplier(char speedCmd) {
   switch (speedCmd) {
     case '0': speedMultiplier = 1.0; Serial.println("SPD:100"); break;
-    case '5': speedMultiplier = 0.5; Serial.println("SPD:50"); break;
-    case '6': speedMultiplier = 0.6; Serial.println("SPD:60"); break;
-    case '7': speedMultiplier = 0.7; Serial.println("SPD:70"); break;
-    case '8': speedMultiplier = 0.8; Serial.println("SPD:80"); break;
-    case '9': speedMultiplier = 0.9; Serial.println("SPD:90"); break;
+    case '5': speedMultiplier = 0.75; Serial.println("SPD:75"); break;
+    case '6': speedMultiplier = 0.8; Serial.println("SPD:80"); break;
+    case '7': speedMultiplier = 0.85; Serial.println("SPD:85"); break;
+    case '8': speedMultiplier = 0.9; Serial.println("SPD:90"); break;
+    case '9': speedMultiplier = 0.95; Serial.println("SPD:95"); break;
   }
 }
 
@@ -1855,6 +1944,10 @@ void getRelevantSensorsForDirection(MovementDirection direction, bool& checkFron
 void updatePerimeterSafety() {
   if (!perimeterSafetyEnabled) return;  // Safety system disabled
 
+  // EXCLUDE LIFTER FROM VIRTUAL SENSOR BUMPER/SAFETY LOGIC
+  // Lifter operates with independent limit switch safety system only
+  if (lifterActive) return;
+
   unsigned long currentTime = millis();
   if (currentTime - lastPerimeterCheck < PERIMETER_CHECK_INTERVAL) return;
 
@@ -2194,6 +2287,7 @@ void triggerEmergencyBrake() {
 // VIRTUAL FORCE FIELD FUNCTIONS (Artificial Potential Field Method)
 // NOTE: Virtual force field only affects omni motors (1-3), NOT the lifter (0)
 // Lifter operates independently with its own limit switch safety system
+// LIFTER IS COMPLETELY EXCLUDED FROM VIRTUAL SENSOR BUMPER/SAFETY LOGIC
 // ============================================================================
 
 // Calculate repulsive force for a single sensor using Artificial Potential Field

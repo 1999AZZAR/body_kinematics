@@ -5,40 +5,40 @@
 #define CONFIG_H
 
 // === ENCODER CONFIGURATION ===
-#define RPM_FILTER_SIZE 6                    // Number of samples for RPM filtering
+#define RPM_FILTER_SIZE 10                   // Number of samples for RPM filtering (increased for stability)
 const int ENCODER_CPR = 28;                  // Counts per revolution (for PG28 motors)
 const double GEAR_RATIO = 1.0;              // Gear ratio (adjust if geared motors)
 
 // === MOTOR SPEED LIMITS ===
-const double MAX_RPM = 100.0;               // Maximum RPM for motors
-const double BASE_SPEED = 80.0;             // Base speed for movements
-const double TURN_SPEED = 30.0;             // Speed for turning movements
-const double LIFT_SPEED = 50.0;             // Speed for lifter motor
+const double MAX_RPM = 300.0;               // Maximum RPM for motors - increased 3x for more torque
+const double BASE_SPEED = 200.0;            // Base speed for movements - increased 2.5x for more power
+const double TURN_SPEED = 100.0;            // Speed for turning movements - increased 3.3x for better turning
+const double LIFT_SPEED = 150.0;            // Speed for lifter motor - increased 3x for lifting power
 
 // === PID CONFIGURATION ===
-const double PID_SAMPLE_TIME = 20;          // PID sample time in ms (reduced from 100ms for 5x faster response)
-const int PID_OUTPUT_LIMIT_MIN = -255;      // PID output minimum (PWM)
-const int PID_OUTPUT_LIMIT_MAX = 255;       // PID output maximum (PWM)
+const double PID_SAMPLE_TIME = 10;          // PID sample time in ms (reduced from 20ms for 2x faster response)
+const int PID_OUTPUT_LIMIT_MIN = -2048;     // PID output minimum (PWM) - increased 8x for maximum torque
+const int PID_OUTPUT_LIMIT_MAX = 2048;      // PID output maximum (PWM) - increased 8x for maximum torque
 
 // PID Tunings (Kp, Ki, Kd) for each motor - optimized for responsiveness
 const double Lifter_Kp = 3.0;               // Lifter PID - more responsive (was 2.0)
 const double Lifter_Ki = 1.2;               // Higher integral for steady state (was 0.5)
 const double Lifter_Kd = 0.05;              // Reduced derivative for less oscillation (was 0.1)
 
-const double Omni_Kp = 10.0;                 // Omni motors - responsive but smooth (reduced from 12.0)
-const double Omni_Ki = 3.5;                 // Balanced integral for smooth settling (reduced from 4.0)
-const double Omni_Kd = 0.02;                 // Increased derivative for better damping and smoothness (was 0.3)
+const double Omni_Kp = 4.0;                  // Omni motors - tuned for high power stability
+const double Omni_Ki = 1.5;                 // Reduced integral to prevent windup with high power
+const double Omni_Kd = 0.1;                  // Increased damping for smooth multi-motor coordination
 
 // === MOTOR SYNCHRONIZATION ===
-const double SYNC_KP = 0.2;                 // Synchronization PID gain (lower for stability)
+const double SYNC_KP = 0.05;                // Synchronization PID gain (much lower for responsiveness)
 
 // === ACCELERATION LIMITING ===
-const double MAX_RPM_CHANGE = 300.0;        // Maximum RPM change per sample (balanced: faster than 200 but smoother than 400)
-const double MAX_RPM_CHANGE_ROTATION = 2000.0; // Fast changes for rotation (responsive but not jerky)
+const double MAX_RPM_CHANGE = 80.0;         // Maximum RPM change per sample (reduced for smoother coordination)
+const double MAX_RPM_CHANGE_ROTATION = 150.0; // Moderate changes for rotation (prevent oscillations)
 
 // === FILTERING AND SMOOTHING ===
-const double RPM_ALPHA = 0.8;               // Exponential smoothing factor (balanced: responsive but smooth)
-const double RPM_ALPHA_FAST = 0.9;          // Fast smoothing during rotation (responsive but stable)
+const double RPM_ALPHA = 0.4;               // Exponential smoothing factor (increased filtering for stability)
+const double RPM_ALPHA_FAST = 0.6;          // Fast smoothing during rotation (more stable)
 
 // === MOTOR ANGLES (degrees) ===
 // Triangular 3-wheel omni robot configuration
@@ -106,7 +106,7 @@ const int GRIPPER_SERVO_CHANNEL = 9;   // YFROBOT shield servo channel for gripp
 
 // Servo angle limits (degrees)
 const int TILT_SERVO_MIN_ANGLE = 0;     // Minimum tilt angle
-const int TILT_SERVO_MAX_ANGLE = 180;   // Maximum tilt angle
+const int TILT_SERVO_MAX_ANGLE = 145;   // Maximum tilt angle
 const int GRIPPER_SERVO_MIN_ANGLE = 0;  // Minimum gripper angle (open)
 const int GRIPPER_SERVO_MAX_ANGLE = 180; // Maximum gripper angle (closed)
 
